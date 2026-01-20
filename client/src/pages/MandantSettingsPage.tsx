@@ -66,6 +66,13 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
 
   const { data: assignedUsers, isLoading: usersLoading } = useQuery<AssignedUser[]>({
     queryKey: ["/api/mandanten", mandantId, "users"],
+    queryFn: async () => {
+      const res = await fetch(`/api/mandanten/${mandantId}/users`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
     enabled: !!mandantId,
   });
 

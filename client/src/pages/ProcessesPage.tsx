@@ -18,11 +18,25 @@ export function ProcessesPage({ mandantId }: ProcessesPageProps) {
 
   const { data: processes, isLoading } = useQuery<Process[]>({
     queryKey: ["/api/processes", mandantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/processes?mandantId=${mandantId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch processes");
+      return res.json();
+    },
     enabled: !!mandantId,
   });
 
   const { data: recentExecutions } = useQuery<ProcessExecution[]>({
     queryKey: ["/api/process-executions/recent", mandantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/process-executions/recent?mandantId=${mandantId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch executions");
+      return res.json();
+    },
     enabled: !!mandantId,
   });
 

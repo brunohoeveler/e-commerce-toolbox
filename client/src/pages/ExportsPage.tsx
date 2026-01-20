@@ -32,11 +32,25 @@ export function ExportsPage({ mandantId }: ExportsPageProps) {
 
   const { data: completedExecutions, isLoading: executionsLoading } = useQuery<ProcessExecution[]>({
     queryKey: ["/api/process-executions/completed", mandantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/process-executions/completed?mandantId=${mandantId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch executions");
+      return res.json();
+    },
     enabled: !!mandantId,
   });
 
   const { data: exportRecords, isLoading: exportsLoading } = useQuery<ExportRecord[]>({
     queryKey: ["/api/exports", mandantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/exports?mandantId=${mandantId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch exports");
+      return res.json();
+    },
     enabled: !!mandantId,
   });
 

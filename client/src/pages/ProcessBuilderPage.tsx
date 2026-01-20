@@ -153,7 +153,7 @@ export function ProcessBuilderPage({ mandantId }: ProcessBuilderPageProps) {
   };
 
   const allHeaders = uploadedFiles.flatMap(f => f.headers);
-  const uniqueHeaders = [...new Set(allHeaders)];
+  const uniqueHeaders = Array.from(new Set(allHeaders));
 
   if (!mandantId) {
     return (
@@ -172,8 +172,8 @@ export function ProcessBuilderPage({ mandantId }: ProcessBuilderPageProps) {
   }
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="sticky top-0 z-10 bg-background border-b border-border p-4">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex-shrink-0 bg-background border-b border-border p-4 z-10">
         <div className="flex items-center justify-between gap-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" onClick={() => navigate("/processes")} data-testid="button-back">
@@ -197,7 +197,8 @@ export function ProcessBuilderPage({ mandantId }: ProcessBuilderPageProps) {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-7xl mx-auto p-6 space-y-6 pb-24">
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-1">
             <CardHeader>
@@ -668,6 +669,7 @@ export function ProcessBuilderPage({ mandantId }: ProcessBuilderPageProps) {
             )}
           </CardContent>
         </Card>
+        </div>
       </div>
     </div>
   );

@@ -38,11 +38,27 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
 
   const { data: processes, isLoading: processesLoading } = useQuery<Process[]>({
     queryKey: ["/api/processes", mandantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/processes?mandantId=${mandantId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch processes");
+      return res.json();
+    },
     enabled: !!mandantId,
   });
 
   const { data: executions, isLoading: executionsLoading } = useQuery<ProcessExecution[]>({
     queryKey: ["/api/process-executions", mandantId, selectedMonth + 1, selectedYear, viewMode],
+    queryFn: async () => {
+      const month = viewMode === "month" ? selectedMonth + 1 : undefined;
+      const url = `/api/process-executions?mandantId=${mandantId}${month ? `&month=${month}&year=${selectedYear}` : `&year=${selectedYear}`}`;
+      const res = await fetch(url, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch executions");
+      return res.json();
+    },
     enabled: !!mandantId,
   });
 
