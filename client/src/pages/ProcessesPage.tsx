@@ -1,10 +1,23 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Plus, Play, Settings, FileText, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, Play, Settings, FileText, Clock, CheckCircle2, XCircle, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Process, ProcessExecution } from "@shared/schema";
 
 interface ProcessesPageProps {
@@ -12,6 +25,10 @@ interface ProcessesPageProps {
 }
 
 export function ProcessesPage({ mandantId }: ProcessesPageProps) {
+  const { toast } = useToast();
+  const [deleteProcessId, setDeleteProcessId] = useState<string | null>(null);
+  const [deleteProcessName, setDeleteProcessName] = useState<string>("");
+
   const { data: processes, isLoading } = useQuery<Process[]>({
     queryKey: ["/api/processes", mandantId],
     queryFn: async () => {
@@ -35,6 +52,32 @@ export function ProcessesPage({ mandantId }: ProcessesPageProps) {
     },
     enabled: !!mandantId,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (processId: string) => {
+      await apiRequest("DELETE", `/api/processes/${processId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/processes", mandantId] });
+      toast({
+        title: "Prozess gelöscht",
+        description: "Der Prozess wurde erfolgreich gelöscht.",
+      });
+      setDeleteProcessId(null);
+    },
+    onError: () => {
+      toast({
+        title: "Fehler",
+        description: "Der Prozess konnte nicht gelöscht werden.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDeleteClick = (process: Process) => {
+    setDeleteProcessId(process.id);
+    setDeleteProcessName(process.name);
+  };
 
   if (!mandantId) {
     return (
@@ -135,6 +178,14 @@ export function ProcessesPage({ mandantId }: ProcessesPageProps) {
                         <Settings className="h-4 w-4" />
                       </Link>
                     </Button>
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      onClick={() => handleDeleteClick(process)}
+                      data-testid={`button-delete-process-${process.id}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -158,6 +209,28 @@ export function ProcessesPage({ mandantId }: ProcessesPageProps) {
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog open={!!deleteProcessId} onOpenChange={() => setDeleteProcessId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Prozess löschen</AlertDialogTitle>
+            <AlertDialogDescription>
+              Möchten Sie den Prozess "{deleteProcessName}" wirklich löschen? 
+              Diese Aktion kann nicht rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteProcessId && deleteMutation.mutate(deleteProcessId)}
+              className="bg-destructive text-destructive-foreground"
+              data-testid="button-confirm-delete"
+            >
+              {deleteMutation.isPending ? "Löschen..." : "Löschen"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

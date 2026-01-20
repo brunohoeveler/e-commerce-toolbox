@@ -15,6 +15,7 @@ import {
   Filter,
   Link2,
   Save,
+  Check,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -547,19 +548,38 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                         <div className="font-medium">{typeInfo?.label}</div>
                         
                         {step.type === "remove_column" && (
-                          <Select
-                            value={(step.config.column as string) || ""}
-                            onValueChange={(v) => updateStepConfig(step.id, { column: v })}
-                          >
-                            <SelectTrigger className="w-64">
-                              <SelectValue placeholder="Spalte wählen" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {uniqueHeaders.map((h) => (
-                                <SelectItem key={h} value={h}>{h}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <div className="space-y-2">
+                            <p className="text-sm text-muted-foreground">Wählen Sie die zu löschenden Spalten:</p>
+                            <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 border rounded-md">
+                              {uniqueHeaders.map((h) => {
+                                const selectedColumns = (step.config.columns as string[]) || 
+                                  (step.config.column ? [step.config.column as string] : []);
+                                const isSelected = selectedColumns.includes(h);
+                                return (
+                                  <Badge
+                                    key={h}
+                                    variant={isSelected ? "default" : "outline"}
+                                    className="cursor-pointer"
+                                    onClick={() => {
+                                      const newColumns = isSelected
+                                        ? selectedColumns.filter(c => c !== h)
+                                        : [...selectedColumns, h];
+                                      updateStepConfig(step.id, { columns: newColumns, column: undefined });
+                                    }}
+                                    data-testid={`toggle-column-${h}`}
+                                  >
+                                    {h}
+                                    {isSelected && <Check className="ml-1 h-3 w-3" />}
+                                  </Badge>
+                                );
+                              })}
+                            </div>
+                            {((step.config.columns as string[])?.length || 0) > 0 && (
+                              <p className="text-sm text-muted-foreground">
+                                {(step.config.columns as string[]).length} Spalte(n) ausgewählt
+                              </p>
+                            )}
+                          </div>
                         )}
 
                         {step.type === "add_column" && (

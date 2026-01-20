@@ -8,6 +8,7 @@ import {
   Building2,
   Users,
   ChevronDown,
+  History,
 } from "lucide-react";
 import {
   Sidebar,
@@ -52,6 +53,11 @@ const menuItems = [
     title: "Neuer Prozess",
     url: "/processes/new",
     icon: Plus,
+  },
+  {
+    title: "Ausgeführte Prozesse",
+    url: "/executions",
+    icon: History,
   },
   {
     title: "Exporte",
