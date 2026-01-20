@@ -32,7 +32,8 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 │   │   ├── LandingPage.tsx       # Öffentliche Landing Page
 │   │   ├── DashboardPage.tsx     # Übersichts-Dashboard
 │   │   ├── ProcessesPage.tsx     # Prozess-Übersicht
-│   │   ├── ProcessBuilderPage.tsx# Prozess-Erstellung
+│   │   ├── ProcessBuilderPage.tsx# Prozess-Erstellung und -Bearbeitung
+│   │   ├── ProcessExecutePage.tsx# Monatliche Daten-Uploads
 │   │   ├── ExportsPage.tsx       # Export-Bereich
 │   │   ├── MandantSettingsPage.tsx# Mandant-Einstellungen
 │   │   ├── MandantenListPage.tsx # Mandanten-Verwaltung
@@ -56,7 +57,8 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 - id, name, mandantenNummer, beraterNummer, sachkontenLaenge, sachkontenRahmen
 
 ### Prozesse
-- id, mandantId, name, description, inputFileCount, transformationSteps
+- id, mandantId, name, description, inputFileCount, inputFileSlots (JSONB), transformationSteps
+- inputFileSlots: Array von benannten Datei-Slots mit { id, name, description, required }
 
 ### Prozess-Ausführungen
 - id, processId, mandantId, status, month, year, inputFiles, outputData, transactionCount
