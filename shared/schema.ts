@@ -61,6 +61,7 @@ export const processes = pgTable("processes", {
   name: text("name").notNull(),
   description: text("description"),
   inputFileCount: integer("input_file_count").notNull().default(1),
+  inputFileSlots: jsonb("input_file_slots").notNull().default([]),
   transformationSteps: jsonb("transformation_steps").notNull().default([]),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -177,6 +178,13 @@ export interface TransformationStep {
   id: string;
   type: 'remove_column' | 'add_column' | 'rename_column' | 'merge_columns' | 'split_column' | 'remove_string' | 'match_files' | 'filter_rows';
   config: Record<string, unknown>;
+}
+
+export interface InputFileSlot {
+  id: string;
+  name: string;
+  description?: string;
+  required: boolean;
 }
 
 export interface FilePreview {

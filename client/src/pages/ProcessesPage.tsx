@@ -1,12 +1,10 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Plus, Play, Settings, FileText, Clock, CheckCircle2, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Process, ProcessExecution } from "@shared/schema";
 
 interface ProcessesPageProps {
@@ -14,8 +12,6 @@ interface ProcessesPageProps {
 }
 
 export function ProcessesPage({ mandantId }: ProcessesPageProps) {
-  const { toast } = useToast();
-
   const { data: processes, isLoading } = useQuery<Process[]>({
     queryKey: ["/api/processes", mandantId],
     queryFn: async () => {
@@ -38,29 +34,6 @@ export function ProcessesPage({ mandantId }: ProcessesPageProps) {
       return res.json();
     },
     enabled: !!mandantId,
-  });
-
-  const executeMutation = useMutation({
-    mutationFn: async (processId: string) => {
-      return apiRequest("POST", `/api/processes/${processId}/execute`, {
-        month: new Date().getMonth() + 1,
-        year: new Date().getFullYear(),
-      });
-    },
-    onSuccess: () => {
-      toast({
-        title: "Prozess gestartet",
-        description: "Der Prozess wird ausgeführt.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/process-executions"] });
-    },
-    onError: () => {
-      toast({
-        title: "Fehler",
-        description: "Prozess konnte nicht gestartet werden.",
-        variant: "destructive",
-      });
-    },
   });
 
   if (!mandantId) {
@@ -149,12 +122,13 @@ export function ProcessesPage({ mandantId }: ProcessesPageProps) {
                   <div className="flex gap-2">
                     <Button
                       className="flex-1"
-                      onClick={() => executeMutation.mutate(process.id)}
-                      disabled={executeMutation.isPending}
+                      asChild
                       data-testid={`button-execute-process-${process.id}`}
                     >
-                      <Play className="h-4 w-4 mr-2" />
-                      Ausführen
+                      <Link href={`/processes/${process.id}/execute`}>
+                        <Play className="h-4 w-4 mr-2" />
+                        Ausführen
+                      </Link>
                     </Button>
                     <Button variant="outline" size="icon" asChild>
                       <Link href={`/processes/${process.id}/edit`} data-testid={`button-edit-process-${process.id}`}>

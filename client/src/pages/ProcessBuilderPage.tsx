@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Plus,
@@ -41,10 +41,11 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { TransformationStep } from "@shared/schema";
+import type { TransformationStep, InputFileSlot } from "@shared/schema";
 
 interface ProcessBuilderPageProps {
   mandantId: string | null;
+  processId?: string;
 }
 
 const TRANSFORMATION_TYPES = [
@@ -65,31 +66,98 @@ interface UploadedFile {
   totalRows: number;
 }
 
-export function ProcessBuilderPage({ mandantId }: ProcessBuilderPageProps) {
+export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const isEditMode = !!processId;
 
   const [processName, setProcessName] = useState("");
   const [processDescription, setProcessDescription] = useState("");
-  const [inputFileCount, setInputFileCount] = useState(1);
+  const [inputFileSlots, setInputFileSlots] = useState<InputFileSlot[]>([
+    { id: crypto.randomUUID(), name: "Datei 1", description: "", required: true }
+  ]);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [transformationSteps, setTransformationSteps] = useState<TransformationStep[]>([]);
   const [showAddStep, setShowAddStep] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  const { data: existingProcess, isLoading: isLoadingProcess } = useQuery({
+    queryKey: ["/api/processes", processId],
+    queryFn: async () => {
+      const res = await fetch(`/api/processes/${processId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load process");
+      return res.json();
+    },
+    enabled: isEditMode,
+  });
+
+  useEffect(() => {
+    if (existingProcess && !isInitialized) {
+      setProcessName(existingProcess.name || "");
+      setProcessDescription(existingProcess.description || "");
+      
+      const slots = existingProcess.inputFileSlots as InputFileSlot[];
+      if (slots && slots.length > 0) {
+        setInputFileSlots(slots);
+      } else {
+        const fileCount = existingProcess.inputFileCount || 1;
+        const defaultSlots: InputFileSlot[] = Array.from({ length: fileCount }, (_, i) => ({
+          id: crypto.randomUUID(),
+          name: `Datei ${i + 1}`,
+          description: "",
+          required: true,
+        }));
+        setInputFileSlots(defaultSlots);
+      }
+      
+      setTransformationSteps((existingProcess.transformationSteps as TransformationStep[]) || []);
+      setIsInitialized(true);
+    }
+  }, [existingProcess, isInitialized]);
+
+  const addFileSlot = () => {
+    setInputFileSlots(prev => [...prev, {
+      id: crypto.randomUUID(),
+      name: `Datei ${prev.length + 1}`,
+      description: "",
+      required: true,
+    }]);
+  };
+
+  const updateFileSlot = (id: string, updates: Partial<InputFileSlot>) => {
+    setInputFileSlots(prev => prev.map(slot => 
+      slot.id === id ? { ...slot, ...updates } : slot
+    ));
+  };
+
+  const removeFileSlot = (id: string) => {
+    setInputFileSlots(prev => prev.filter(slot => slot.id !== id));
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (isEditMode) {
+        return apiRequest("PATCH", `/api/processes/${processId}`, {
+          name: processName,
+          description: processDescription,
+          inputFileCount: inputFileSlots.length,
+          inputFileSlots,
+          transformationSteps,
+        });
+      }
       return apiRequest("POST", "/api/processes", {
         mandantId,
         name: processName,
         description: processDescription,
-        inputFileCount,
+        inputFileCount: inputFileSlots.length,
+        inputFileSlots,
         transformationSteps,
       });
     },
     onSuccess: () => {
       toast({
-        title: "Prozess gespeichert",
-        description: "Der Prozess wurde erfolgreich angelegt.",
+        title: isEditMode ? "Prozess aktualisiert" : "Prozess gespeichert",
+        description: isEditMode ? "Der Prozess wurde erfolgreich aktualisiert." : "Der Prozess wurde erfolgreich angelegt.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/processes"] });
       navigate("/processes");
@@ -155,6 +223,14 @@ export function ProcessBuilderPage({ mandantId }: ProcessBuilderPageProps) {
   const allHeaders = uploadedFiles.flatMap(f => f.headers);
   const uniqueHeaders = Array.from(new Set(allHeaders));
 
+  if (isEditMode && isLoadingProcess) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
   if (!mandantId) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
@@ -180,9 +256,9 @@ export function ProcessBuilderPage({ mandantId }: ProcessBuilderPageProps) {
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
-              <h1 className="text-xl font-bold">Neuer Prozess</h1>
+              <h1 className="text-xl font-bold">{isEditMode ? "Prozess bearbeiten" : "Neuer Prozess"}</h1>
               <p className="text-sm text-muted-foreground">
-                Erstellen Sie einen Datentransformationsprozess
+                {isEditMode ? "Bearbeiten Sie den Datentransformationsprozess" : "Erstellen Sie einen Datentransformationsprozess"}
               </p>
             </div>
           </div>
@@ -192,7 +268,7 @@ export function ProcessBuilderPage({ mandantId }: ProcessBuilderPageProps) {
             data-testid="button-save-process"
           >
             <Save className="h-4 w-4 mr-2" />
-            Prozess speichern
+            {isEditMode ? "Änderungen speichern" : "Prozess speichern"}
           </Button>
         </div>
       </div>
@@ -228,23 +304,64 @@ export function ProcessBuilderPage({ mandantId }: ProcessBuilderPageProps) {
                   data-testid="input-process-description"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="inputFileCount">Anzahl Input-Dateien</Label>
-                <Select
-                  value={inputFileCount.toString()}
-                  onValueChange={(v) => setInputFileCount(parseInt(v))}
-                >
-                  <SelectTrigger data-testid="select-input-file-count">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <SelectItem key={n} value={n.toString()}>
-                        {n} Datei{n > 1 ? "en" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Input-Dateien</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addFileSlot}
+                    data-testid="button-add-file-slot"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Hinzufügen
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {inputFileSlots.map((slot, index) => (
+                    <div key={slot.id} className="border border-border rounded-md p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <Input
+                          placeholder="Name der Datei"
+                          value={slot.name}
+                          onChange={(e) => updateFileSlot(slot.id, { name: e.target.value })}
+                          className="flex-1"
+                          data-testid={`input-file-slot-name-${index}`}
+                        />
+                        {inputFileSlots.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeFileSlot(slot.id)}
+                            data-testid={`button-remove-file-slot-${index}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                      <Input
+                        placeholder="Beschreibung (optional)"
+                        value={slot.description || ""}
+                        onChange={(e) => updateFileSlot(slot.id, { description: e.target.value })}
+                        data-testid={`input-file-slot-description-${index}`}
+                      />
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`required-${slot.id}`}
+                          checked={slot.required}
+                          onChange={(e) => updateFileSlot(slot.id, { required: e.target.checked })}
+                          className="rounded"
+                        />
+                        <label htmlFor={`required-${slot.id}`} className="text-sm text-muted-foreground">
+                          Pflichtfeld
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>

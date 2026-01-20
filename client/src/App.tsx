@@ -13,6 +13,7 @@ import { LandingPage } from "@/pages/LandingPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ProcessesPage } from "@/pages/ProcessesPage";
 import { ProcessBuilderPage } from "@/pages/ProcessBuilderPage";
+import { ProcessExecutePage } from "@/pages/ProcessExecutePage";
 import { ExportsPage } from "@/pages/ExportsPage";
 import { MandantSettingsPage } from "@/pages/MandantSettingsPage";
 import { MandantenListPage } from "@/pages/MandantenListPage";
@@ -65,6 +66,8 @@ function AuthenticatedApp() {
               <Route path="/dashboard" component={() => <DashboardPage mandantId={selectedMandant?.id || null} />} />
               <Route path="/processes" component={() => <ProcessesPage mandantId={selectedMandant?.id || null} />} />
               <Route path="/processes/new" component={() => <ProcessBuilderPage mandantId={selectedMandant?.id || null} />} />
+              <Route path="/processes/:id/edit" component={({ params }) => <ProcessBuilderPage mandantId={selectedMandant?.id || null} processId={params.id} />} />
+              <Route path="/processes/:id/execute" component={({ params }) => <ProcessExecutePage mandantId={selectedMandant?.id || null} processId={params.id} />} />
               <Route path="/exports" component={() => <ExportsPage mandantId={selectedMandant?.id || null} />} />
               <Route path="/settings" component={() => <MandantSettingsPage mandantId={selectedMandant?.id || null} mandant={selectedMandant} />} />
               <Route path="/mandanten" component={() => <MandantenListPage onSelectMandant={handleSelectMandant} />} />
