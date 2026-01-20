@@ -20,7 +20,20 @@ interface AuthRequest extends Request {
 }
 
 async function getUserContext(userId: string) {
-  const profile = await storage.getUserProfile(userId);
+  let profile = await storage.getUserProfile(userId);
+  
+  if (!profile) {
+    const allUsers = await storage.getUsers();
+    const allProfiles = allUsers.filter(u => u.profile).map(u => u.profile);
+    const hasAnyInternalUser = allProfiles.some(p => p?.role === "internal");
+    
+    if (!hasAnyInternalUser) {
+      profile = await storage.createUserProfile({ userId, role: "internal" });
+    } else {
+      profile = await storage.createUserProfile({ userId, role: "external" });
+    }
+  }
+  
   const isInternal = profile?.role === "internal";
   const assignments = isInternal ? [] : await storage.getUserMandantAssignments(userId);
   const assignedMandantIds = assignments.map(a => a.mandantId);
@@ -566,27 +579,57 @@ function parseInputFiles(inputFiles: any[]): Array<Record<string, any>> {
 }
 
 function parseCSVContent(content: string): Array<Record<string, any>> {
-  const lines = content.trim().split('\n');
+  const lines = content.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
   
   const headerLine = lines[0];
   const delimiter = headerLine.includes(';') ? ';' : ',';
-  const headers = headerLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
+  const headers = parseCSVLine(headerLine, delimiter);
   
   const transactions: Array<Record<string, any>> = [];
   
   for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''));
-    if (values.length >= headers.length) {
-      const row: Record<string, any> = {};
-      headers.forEach((header, idx) => {
-        row[header.toLowerCase()] = values[idx] || '';
-      });
-      transactions.push(row);
-    }
+    const line = lines[i].trim();
+    if (!line) continue;
+    
+    const values = parseCSVLine(line, delimiter);
+    const row: Record<string, any> = {};
+    headers.forEach((header, idx) => {
+      const key = header.toLowerCase().replace(/\s+/g, '_');
+      row[key] = values[idx] || '';
+    });
+    transactions.push(row);
   }
   
   return transactions;
+}
+
+function parseCSVLine(line: string, delimiter: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+    
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === delimiter && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  
+  result.push(current.trim());
+  return result;
 }
 
 function generateSampleTransactions(): Array<Record<string, any>> {
