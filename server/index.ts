@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { spawn, ChildProcess } from "child_process";
 
 const app = express();
 const httpServer = createServer(app);
@@ -59,7 +60,54 @@ app.use((req, res, next) => {
   next();
 });
 
+let pythonProcess: ChildProcess | null = null;
+
+function startPythonService() {
+  log("Starting Python transformation service...", "python");
+  
+  pythonProcess = spawn("python", ["python_service/main.py"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env },
+  });
+  
+  pythonProcess.stdout?.on("data", (data: Buffer) => {
+    const lines = data.toString().trim().split("\n");
+    lines.forEach((line: string) => {
+      if (line.trim()) log(line, "python");
+    });
+  });
+  
+  pythonProcess.stderr?.on("data", (data: Buffer) => {
+    const lines = data.toString().trim().split("\n");
+    lines.forEach((line: string) => {
+      if (line.trim()) log(line, "python-err");
+    });
+  });
+  
+  pythonProcess.on("error", (err) => {
+    log(`Python service failed to start: ${err.message}`, "python-err");
+  });
+  
+  pythonProcess.on("exit", (code) => {
+    log(`Python service exited with code ${code}`, "python");
+    if (code !== 0) {
+      setTimeout(() => {
+        log("Attempting to restart Python service...", "python");
+        startPythonService();
+      }, 5000);
+    }
+  });
+}
+
+process.on("exit", () => {
+  if (pythonProcess) {
+    pythonProcess.kill();
+  }
+});
+
 (async () => {
+  startPythonService();
+  
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

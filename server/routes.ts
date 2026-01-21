@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
-import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { registerObjectStorageRoutes, ObjectStorageService, objectStorageClient } from "./replit_integrations/object_storage";
 import { 
   insertMandantSchema, 
   insertProcessSchema, 
@@ -10,6 +10,7 @@ import {
   insertExportRecordSchema 
 } from "@shared/schema";
 import { z } from "zod";
+import { callPythonTransform, checkPythonServiceHealth } from "./python-transform";
 
 interface AuthRequest extends Request {
   user?: {
@@ -324,10 +325,66 @@ export async function registerRoutes(
 
       const { month, year, inputFiles } = req.body;
       
-      const transformedData = executeTransformationPipeline(
-        inputFiles || [],
-        process.transformationSteps as any[] || []
-      );
+      let transformedData: TransactionData;
+      
+      const isPythonServiceAvailable = await checkPythonServiceHealth();
+      
+      if (isPythonServiceAvailable && inputFiles && inputFiles.length > 0) {
+        try {
+          const objectStorageService = new ObjectStorageService();
+          const filesForPython: Array<{ slotId: string; content: Buffer; filename: string }> = [];
+          
+          for (const fileInfo of inputFiles) {
+            if (fileInfo.objectPath) {
+              const file = await objectStorageService.getObjectEntityFile(fileInfo.objectPath);
+              const [content] = await file.download();
+              filesForPython.push({
+                slotId: fileInfo.slotId || `file_${filesForPython.length}`,
+                content: content,
+                filename: fileInfo.filename || fileInfo.name || 'file.csv',
+              });
+            } else if (fileInfo.content) {
+              filesForPython.push({
+                slotId: fileInfo.slotId || `file_${filesForPython.length}`,
+                content: Buffer.from(fileInfo.content, 'utf-8'),
+                filename: fileInfo.filename || fileInfo.name || 'file.csv',
+              });
+            }
+          }
+          
+          if (filesForPython.length > 0) {
+            const pythonResult = await callPythonTransform(
+              filesForPython,
+              process.transformationSteps as any[] || []
+            );
+            
+            const amountColumn = pythonResult.columns.find((col: string) => 
+              col.toLowerCase().includes('betrag') || 
+              col.toLowerCase().includes('amount') || 
+              col.toLowerCase().includes('summe')
+            );
+            const totalAmount = amountColumn 
+              ? pythonResult.data.reduce((sum: number, t: any) => sum + (parseFloat(t[amountColumn]) || 0), 0)
+              : 0;
+            
+            transformedData = {
+              transactions: pythonResult.data,
+              columns: pythonResult.columns,
+              summary: {
+                totalAmount,
+                transactionCount: pythonResult.row_count,
+              },
+            };
+          } else {
+            transformedData = executeTransformationPipeline(inputFiles || [], process.transformationSteps as any[] || []);
+          }
+        } catch (pythonError) {
+          console.error("Python service error, falling back to JS:", pythonError);
+          transformedData = executeTransformationPipeline(inputFiles || [], process.transformationSteps as any[] || []);
+        }
+      } else {
+        transformedData = executeTransformationPipeline(inputFiles || [], process.transformationSteps as any[] || []);
+      }
       
       const execution = await storage.createProcessExecution({
         processId: process.id,

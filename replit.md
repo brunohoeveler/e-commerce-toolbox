@@ -10,6 +10,7 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 ## Tech Stack
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, Shadcn/UI
 - **Backend**: Express.js, Node.js
+- **Transformation Service**: Python FastAPI mit Polars (läuft auf Port 5001)
 - **Datenbank**: PostgreSQL mit Drizzle ORM
 - **Authentifizierung**: Replit Auth (OpenID Connect)
 - **Dateispeicher**: Replit Object Storage
