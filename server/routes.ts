@@ -485,15 +485,15 @@ export async function registerRoutes(
       
       const attachments: { slotId: string; fileName: string; storagePath: string }[] = [];
       
-      const privateDir = process.env.PRIVATE_OBJECT_DIR || '';
-      const bucketMatch = privateDir.match(/^\/([^\/]+)\//);
+      const envPrivateDir = globalThis.process.env.PRIVATE_OBJECT_DIR || '';
+      const bucketMatch = envPrivateDir.match(/^\/([^\/]+)\//);
       const bucketName = bucketMatch ? bucketMatch[1] : '';
       
       if (bucketName && inputFiles && Array.isArray(inputFiles)) {
         for (const fileInfo of inputFiles) {
           try {
             const fileName = fileInfo.fileName || fileInfo.name || 'file.csv';
-            const objectName = `${privateDir.replace(/^\/[^\/]+\//, '')}/executions/${execution.id}/${fileName}`;
+            const objectName = `${envPrivateDir.replace(/^\/[^\/]+\//, '')}/executions/${execution.id}/${fileName}`;
             
             if (fileInfo.data) {
               const csvContent = typeof fileInfo.data === 'string' 
@@ -521,7 +521,7 @@ export async function registerRoutes(
           if (entry.attachmentName && entry.attachmentContent) {
             try {
               const fileName = entry.attachmentName;
-              const objectName = `${privateDir.replace(/^\/[^\/]+\//, '')}/executions/${execution.id}/${fileName}`;
+              const objectName = `${envPrivateDir.replace(/^\/[^\/]+\//, '')}/executions/${execution.id}/${fileName}`;
               
               const base64Data = entry.attachmentContent.split(',')[1] || entry.attachmentContent;
               const buffer = Buffer.from(base64Data, 'base64');
