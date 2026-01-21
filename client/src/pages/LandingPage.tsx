@@ -37,7 +37,7 @@ export function LandingPage() {
               <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center">
                 <FileSpreadsheet className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-lg">Ecovis</span>
+              <span className="font-semibold text-lg">ECOVIS</span>
             </div>
             <Button asChild data-testid="button-login-nav">
               <a href="/api/login">Anmelden</a>
@@ -45,7 +45,6 @@ export function LandingPage() {
           </div>
         </div>
       </nav>
-
       <main className="pt-16">
         <section className="relative overflow-hidden py-24 sm:py-32">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-accent/10" />
@@ -172,7 +171,6 @@ export function LandingPage() {
           </div>
         </section>
       </main>
-
       <footer className="border-t border-border py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
