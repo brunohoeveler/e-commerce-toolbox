@@ -58,7 +58,9 @@ export function ProcessesPage({ mandantId }: ProcessesPageProps) {
       await apiRequest("DELETE", `/api/processes/${processId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/processes", mandantId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/processes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/process-executions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial-summary"] });
       toast({
         title: "Prozess gelöscht",
         description: "Der Prozess wurde erfolgreich gelöscht.",

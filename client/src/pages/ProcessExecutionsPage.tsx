@@ -75,9 +75,9 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
       await apiRequest("DELETE", `/api/process-executions/${executionId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/process-executions?mandantId=${mandantId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/process-executions'] });
       queryClient.invalidateQueries({ queryKey: ['/api/process-executions/recent'] });
-      queryClient.invalidateQueries({ queryKey: [`/api/financial-summary?mandantId=${mandantId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/financial-summary'] });
       queryClient.invalidateQueries({ queryKey: ['/api/exports'] });
       toast({
         title: "Ausführung gelöscht",
