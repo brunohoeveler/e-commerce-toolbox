@@ -137,6 +137,9 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
     setInputFileSlots(prev => prev.filter(slot => slot.id !== id));
   };
 
+  const isAllManualInput = inputFileSlots.length > 0 && inputFileSlots.every(slot => slot.inputType === 'manual');
+  const hasAnyFileSlot = inputFileSlots.some(slot => !slot.inputType || slot.inputType === 'file');
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (isEditMode) {
@@ -551,81 +554,92 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
 
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Beispieldateien</CardTitle>
+              <CardTitle>{isAllManualInput ? "Belege" : "Beispieldateien"}</CardTitle>
               <CardDescription>
-                Laden Sie Beispieldateien hoch, um die Transformation zu konfigurieren
+                {isAllManualInput 
+                  ? "Bei der Ausführung können Sie Belege (PDF, Bilder) zu den manuellen Beträgen hochladen"
+                  : "Laden Sie Beispieldateien hoch, um die Transformation zu konfigurieren"
+                }
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div 
-                  className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
-                    isDragging 
-                      ? "border-primary bg-primary/5" 
-                      : "border-border hover:border-primary/50"
-                  }`}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  data-testid="dropzone-file-upload"
-                >
-                  <input
-                    type="file"
-                    accept=".csv,.txt,.xlsx,.xls"
-                    multiple
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    id="file-upload"
-                  />
-                  <label
-                    htmlFor="file-upload"
-                    className="cursor-pointer flex flex-col items-center gap-2"
-                  >
-                    <Upload className={`h-8 w-8 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
-                    <span className={`text-sm ${isDragging ? "text-primary font-medium" : "text-muted-foreground"}`}>
-                      {isDragging ? "Dateien hier ablegen" : "Klicken oder Dateien hierher ziehen"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      CSV, TXT, XLSX unterstützt
-                    </span>
-                  </label>
+              {isAllManualInput ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileSpreadsheet className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>Keine Beispieldateien erforderlich</p>
+                  <p className="text-sm">Bei manueller Eingabe geben Sie Beträge direkt bei der Ausführung ein</p>
                 </div>
-
-                {uploadedFiles.length > 0 && (
-                  <div className="space-y-3">
-                    {uploadedFiles.map((file, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between rounded-md border border-border p-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary/10 text-primary text-sm font-bold">
-                            {index + 1}
-                          </div>
-                          <FileSpreadsheet className="h-5 w-5 text-primary" />
-                          <div>
-                            <p className="text-sm font-medium">
-                              <span className="text-muted-foreground mr-1">Datei {index + 1}:</span>
-                              {file.name}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {file.totalRows} Zeilen, {file.headers.length} Spalten
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeFile(index)}
-                          data-testid={`button-remove-file-${index}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
+              ) : (
+                <div className="space-y-4">
+                  <div 
+                    className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                      isDragging 
+                        ? "border-primary bg-primary/5" 
+                        : "border-border hover:border-primary/50"
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    data-testid="dropzone-file-upload"
+                  >
+                    <input
+                      type="file"
+                      accept=".csv,.txt,.xlsx,.xls"
+                      multiple
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="file-upload"
+                    />
+                    <label
+                      htmlFor="file-upload"
+                      className="cursor-pointer flex flex-col items-center gap-2"
+                    >
+                      <Upload className={`h-8 w-8 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
+                      <span className={`text-sm ${isDragging ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                        {isDragging ? "Dateien hier ablegen" : "Klicken oder Dateien hierher ziehen"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        CSV, TXT, XLSX unterstützt
+                      </span>
+                    </label>
                   </div>
-                )}
-              </div>
+
+                  {uploadedFiles.length > 0 && (
+                    <div className="space-y-3">
+                      {uploadedFiles.map((file, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between rounded-md border border-border p-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary/10 text-primary text-sm font-bold">
+                              {index + 1}
+                            </div>
+                            <FileSpreadsheet className="h-5 w-5 text-primary" />
+                            <div>
+                              <p className="text-sm font-medium">
+                                <span className="text-muted-foreground mr-1">Datei {index + 1}:</span>
+                                {file.name}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {file.totalRows} Zeilen, {file.headers.length} Spalten
+                              </p>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeFile(index)}
+                            data-testid={`button-remove-file-${index}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -679,7 +693,8 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
           </Card>
         )}
 
-        <Card>
+        {hasAnyFileSlot && (
+          <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -1009,8 +1024,9 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
             )}
           </CardContent>
         </Card>
+        )}
 
-        {uploadedFiles.length > 0 && transformationSteps.length > 0 && transformedPreview && (
+        {hasAnyFileSlot && uploadedFiles.length > 0 && transformationSteps.length > 0 && transformedPreview && (
           <Card className="border-primary/20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
