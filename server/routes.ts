@@ -349,62 +349,74 @@ export async function registerRoutes(
       }
       
       const isPythonServiceAvailable = await checkPythonServiceHealth();
+      const hasFileInputs = inputFiles && inputFiles.length > 0;
       
-      if (isPythonServiceAvailable && inputFiles && inputFiles.length > 0) {
-        try {
-          const objectStorageService = new ObjectStorageService();
-          const filesForPython: Array<{ slotId: string; content: Buffer; filename: string }> = [];
-          
-          for (const fileInfo of inputFiles) {
-            if (fileInfo.objectPath) {
-              const file = await objectStorageService.getObjectEntityFile(fileInfo.objectPath);
-              const [content] = await file.download();
-              filesForPython.push({
-                slotId: fileInfo.slotId || `file_${filesForPython.length}`,
-                content: content,
-                filename: fileInfo.filename || fileInfo.name || 'file.csv',
-              });
-            } else if (fileInfo.content) {
-              filesForPython.push({
-                slotId: fileInfo.slotId || `file_${filesForPython.length}`,
-                content: Buffer.from(fileInfo.content, 'utf-8'),
-                filename: fileInfo.filename || fileInfo.name || 'file.csv',
-              });
+      if (hasFileInputs) {
+        if (isPythonServiceAvailable) {
+          try {
+            const objectStorageService = new ObjectStorageService();
+            const filesForPython: Array<{ slotId: string; content: Buffer; filename: string }> = [];
+            
+            for (const fileInfo of inputFiles) {
+              if (fileInfo.objectPath) {
+                const file = await objectStorageService.getObjectEntityFile(fileInfo.objectPath);
+                const [content] = await file.download();
+                filesForPython.push({
+                  slotId: fileInfo.slotId || `file_${filesForPython.length}`,
+                  content: content,
+                  filename: fileInfo.filename || fileInfo.name || 'file.csv',
+                });
+              } else if (fileInfo.content) {
+                filesForPython.push({
+                  slotId: fileInfo.slotId || `file_${filesForPython.length}`,
+                  content: Buffer.from(fileInfo.content, 'utf-8'),
+                  filename: fileInfo.filename || fileInfo.name || 'file.csv',
+                });
+              }
             }
-          }
-          
-          if (filesForPython.length > 0) {
-            const pythonResult = await callPythonTransform(
-              filesForPython,
-              process.transformationSteps as any[] || []
-            );
             
-            const amountColumn = pythonResult.columns.find((col: string) => 
-              col.toLowerCase().includes('betrag') || 
-              col.toLowerCase().includes('amount') || 
-              col.toLowerCase().includes('summe')
-            );
-            const totalAmount = amountColumn 
-              ? pythonResult.data.reduce((sum: number, t: any) => sum + (parseFloat(t[amountColumn]) || 0), 0)
-              : 0;
-            
-            transformedData = {
-              transactions: pythonResult.data,
-              columns: pythonResult.columns,
-              summary: {
-                totalAmount,
-                transactionCount: pythonResult.row_count,
-              },
-            };
-          } else {
+            if (filesForPython.length > 0) {
+              const pythonResult = await callPythonTransform(
+                filesForPython,
+                process.transformationSteps as any[] || []
+              );
+              
+              const amountColumn = pythonResult.columns.find((col: string) => 
+                col.toLowerCase().includes('betrag') || 
+                col.toLowerCase().includes('amount') || 
+                col.toLowerCase().includes('summe')
+              );
+              const totalAmount = amountColumn 
+                ? pythonResult.data.reduce((sum: number, t: any) => sum + (parseFloat(t[amountColumn]) || 0), 0)
+                : 0;
+              
+              transformedData = {
+                transactions: pythonResult.data,
+                columns: pythonResult.columns,
+                summary: {
+                  totalAmount,
+                  transactionCount: pythonResult.row_count,
+                },
+              };
+            } else {
+              transformedData = executeTransformationPipeline(inputFiles || [], process.transformationSteps as any[] || []);
+            }
+          } catch (pythonError) {
+            console.error("Python service error, falling back to JS:", pythonError);
             transformedData = executeTransformationPipeline(inputFiles || [], process.transformationSteps as any[] || []);
           }
-        } catch (pythonError) {
-          console.error("Python service error, falling back to JS:", pythonError);
+        } else {
           transformedData = executeTransformationPipeline(inputFiles || [], process.transformationSteps as any[] || []);
         }
       } else {
-        transformedData = executeTransformationPipeline(inputFiles || [], process.transformationSteps as any[] || []);
+        transformedData = {
+          transactions: [],
+          columns: [],
+          summary: {
+            totalAmount: 0,
+            transactionCount: 0,
+          },
+        };
       }
       
       const columns = transformedData.columns || [];
@@ -473,21 +485,29 @@ export async function registerRoutes(
       
       const attachments: { slotId: string; fileName: string; storagePath: string }[] = [];
       
-      if (inputFiles && Array.isArray(inputFiles)) {
+      const privateDir = process.env.PRIVATE_OBJECT_DIR || '';
+      const bucketMatch = privateDir.match(/^\/([^\/]+)\//);
+      const bucketName = bucketMatch ? bucketMatch[1] : '';
+      
+      if (bucketName && inputFiles && Array.isArray(inputFiles)) {
         for (const fileInfo of inputFiles) {
           try {
             const fileName = fileInfo.fileName || fileInfo.name || 'file.csv';
-            const storagePath = `.private/executions/${execution.id}/${fileName}`;
+            const objectName = `${privateDir.replace(/^\/[^\/]+\//, '')}/executions/${execution.id}/${fileName}`;
             
             if (fileInfo.data) {
               const csvContent = typeof fileInfo.data === 'string' 
                 ? fileInfo.data 
                 : JSON.stringify(fileInfo.data);
-              await objectStorageClient.uploadFile(storagePath, Buffer.from(csvContent, 'utf-8'));
+              
+              const bucket = objectStorageClient.bucket(bucketName);
+              const file = bucket.file(objectName);
+              await file.save(Buffer.from(csvContent, 'utf-8'));
+              
               attachments.push({
                 slotId: fileInfo.slotId || '',
                 fileName,
-                storagePath,
+                storagePath: `/${bucketName}/${objectName}`,
               });
             }
           } catch (uploadError) {
@@ -496,23 +516,28 @@ export async function registerRoutes(
         }
       }
       
-      for (const entry of validatedManualEntries) {
-        if (entry.attachmentName && entry.attachmentContent) {
-          try {
-            const fileName = entry.attachmentName;
-            const storagePath = `.private/executions/${execution.id}/${fileName}`;
-            
-            const base64Data = entry.attachmentContent.split(',')[1] || entry.attachmentContent;
-            const buffer = Buffer.from(base64Data, 'base64');
-            
-            await objectStorageClient.uploadFile(storagePath, buffer);
-            attachments.push({
-              slotId: entry.slotId || '',
-              fileName,
-              storagePath,
-            });
-          } catch (uploadError) {
-            console.error("Error uploading manual attachment:", uploadError);
+      if (bucketName) {
+        for (const entry of validatedManualEntries) {
+          if (entry.attachmentName && entry.attachmentContent) {
+            try {
+              const fileName = entry.attachmentName;
+              const objectName = `${privateDir.replace(/^\/[^\/]+\//, '')}/executions/${execution.id}/${fileName}`;
+              
+              const base64Data = entry.attachmentContent.split(',')[1] || entry.attachmentContent;
+              const buffer = Buffer.from(base64Data, 'base64');
+              
+              const bucket = objectStorageClient.bucket(bucketName);
+              const file = bucket.file(objectName);
+              await file.save(buffer);
+              
+              attachments.push({
+                slotId: entry.slotId || '',
+                fileName,
+                storagePath: `/${bucketName}/${objectName}`,
+              });
+            } catch (uploadError) {
+              console.error("Error uploading manual attachment:", uploadError);
+            }
           }
         }
       }
@@ -635,7 +660,15 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Attachment not found" });
       }
       
-      const fileData = await objectStorageClient.downloadFile(attachment.storagePath);
+      const storagePath = attachment.storagePath;
+      const pathParts = storagePath.replace(/^\//, '').split('/');
+      const bucketName = pathParts[0];
+      const objectName = pathParts.slice(1).join('/');
+      
+      const bucket = objectStorageClient.bucket(bucketName);
+      const file = bucket.file(objectName);
+      const [fileData] = await file.download();
+      
       res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
       
       const ext = fileName.toLowerCase().split('.').pop();
