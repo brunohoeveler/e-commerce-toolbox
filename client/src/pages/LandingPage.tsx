@@ -37,7 +37,6 @@ export function LandingPage() {
               <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center">
                 <FileSpreadsheet className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-lg">ECOVIS</span>
             </div>
             <Button asChild data-testid="button-login-nav">
               <a href="/api/login">Anmelden</a>
