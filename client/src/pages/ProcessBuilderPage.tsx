@@ -176,10 +176,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
     },
   });
 
-  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files) return;
-
+  const processFiles = useCallback((files: FileList | File[]) => {
     Array.from(files).forEach((file) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -200,6 +197,37 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       reader.readAsText(file);
     });
   }, []);
+
+  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files) return;
+    processFiles(files);
+  }, [processFiles]);
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      processFiles(files);
+    }
+  }, [processFiles]);
 
   const removeFile = (index: number) => {
     setUploadedFiles(prev => prev.filter((_, i) => i !== index));
@@ -227,6 +255,123 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
 
   const allHeaders = uploadedFiles.flatMap(f => f.headers);
   const uniqueHeaders = Array.from(new Set(allHeaders));
+
+  const applyTransformations = useCallback(() => {
+    if (uploadedFiles.length === 0) return null;
+    
+    let headers = [...uploadedFiles[0].headers];
+    let rows = uploadedFiles[0].preview.map(row => [...row]);
+    
+    for (const step of transformationSteps) {
+      switch (step.type) {
+        case "remove_column": {
+          const columnsToRemove = (step.config.columns as string[]) || 
+            (step.config.column ? [step.config.column as string] : []);
+          const indicesToRemove = columnsToRemove
+            .map(col => headers.indexOf(col))
+            .filter(i => i !== -1)
+            .sort((a, b) => b - a);
+          
+          for (const idx of indicesToRemove) {
+            headers.splice(idx, 1);
+            rows = rows.map(row => {
+              const newRow = [...row];
+              newRow.splice(idx, 1);
+              return newRow;
+            });
+          }
+          break;
+        }
+        case "add_column": {
+          const columnName = step.config.columnName as string;
+          const value = step.config.value as string || "";
+          if (columnName) {
+            headers.push(columnName);
+            rows = rows.map(row => [...row, value]);
+          }
+          break;
+        }
+        case "rename_column": {
+          const oldName = step.config.oldName as string;
+          const newName = step.config.newName as string;
+          const idx = headers.indexOf(oldName);
+          if (idx !== -1 && newName) {
+            headers[idx] = newName;
+          }
+          break;
+        }
+        case "merge_columns": {
+          const column1 = step.config.column1 as string;
+          const column2 = step.config.column2 as string;
+          const newColumnName = step.config.newColumnName as string;
+          const separator = (step.config.separator as string) || "";
+          if (column1 && column2 && newColumnName) {
+            const idx1 = headers.indexOf(column1);
+            const idx2 = headers.indexOf(column2);
+            if (idx1 !== -1 && idx2 !== -1) {
+              headers.push(newColumnName);
+              rows = rows.map(row => {
+                const mergedValue = (row[idx1] || "") + separator + (row[idx2] || "");
+                return [...row, mergedValue];
+              });
+            }
+          }
+          break;
+        }
+        case "remove_string": {
+          const column = step.config.column as string;
+          const searchString = step.config.searchString as string;
+          const idx = headers.indexOf(column);
+          if (idx !== -1 && searchString) {
+            rows = rows.map(row => {
+              const newRow = [...row];
+              newRow[idx] = (newRow[idx] || "").replace(new RegExp(searchString.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), "");
+              return newRow;
+            });
+          }
+          break;
+        }
+        case "filter_rows": {
+          const column = step.config.column as string;
+          const operator = step.config.operator as string;
+          const filterValue = step.config.value as string;
+          const idx = headers.indexOf(column);
+          if (idx !== -1 && operator && filterValue !== undefined) {
+            rows = rows.filter(row => {
+              const cellValue = row[idx] || "";
+              switch (operator) {
+                case "equals": return cellValue === filterValue;
+                case "contains": return cellValue.includes(filterValue);
+                case "not_equals": return cellValue !== filterValue;
+                case "not_contains": return !cellValue.includes(filterValue);
+                default: return true;
+              }
+            });
+          }
+          break;
+        }
+        case "split_column": {
+          const column = step.config.column as string;
+          const separator = step.config.separator as string;
+          const newColumn1 = step.config.newColumn1 as string;
+          const newColumn2 = step.config.newColumn2 as string;
+          const idx = headers.indexOf(column);
+          if (idx !== -1 && separator && newColumn1 && newColumn2) {
+            headers.push(newColumn1, newColumn2);
+            rows = rows.map(row => {
+              const parts = (row[idx] || "").split(separator);
+              return [...row, parts[0] || "", parts.slice(1).join(separator) || ""];
+            });
+          }
+          break;
+        }
+      }
+    }
+    
+    return { headers, rows };
+  }, [uploadedFiles, transformationSteps]);
+
+  const transformedPreview = applyTransformations();
 
   if (isEditMode && isLoadingProcess) {
     return (
@@ -397,7 +542,17 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
+                <div 
+                  className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                    isDragging 
+                      ? "border-primary bg-primary/5" 
+                      : "border-border hover:border-primary/50"
+                  }`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  data-testid="dropzone-file-upload"
+                >
                   <input
                     type="file"
                     accept=".csv,.txt,.xlsx,.xls"
@@ -410,9 +565,9 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                     htmlFor="file-upload"
                     className="cursor-pointer flex flex-col items-center gap-2"
                   >
-                    <Upload className="h-8 w-8 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      Klicken oder Dateien hierher ziehen
+                    <Upload className={`h-8 w-8 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
+                    <span className={`text-sm ${isDragging ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                      {isDragging ? "Dateien hier ablegen" : "Klicken oder Dateien hierher ziehen"}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       CSV, TXT, XLSX unterstützt
@@ -428,9 +583,15 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                         className="flex items-center justify-between rounded-md border border-border p-3"
                       >
                         <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary/10 text-primary text-sm font-bold">
+                            {index + 1}
+                          </div>
                           <FileSpreadsheet className="h-5 w-5 text-primary" />
                           <div>
-                            <p className="text-sm font-medium">{file.name}</p>
+                            <p className="text-sm font-medium">
+                              <span className="text-muted-foreground mr-1">Datei {index + 1}:</span>
+                              {file.name}
+                            </p>
                             <p className="text-xs text-muted-foreground">
                               {file.totalRows} Zeilen, {file.headers.length} Spalten
                             </p>
@@ -462,16 +623,21 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="w-full">
-                <div className="min-w-max">
-                  {uploadedFiles.map((file, fileIndex) => (
-                    <div key={fileIndex} className="mb-6 last:mb-0">
-                      <h4 className="text-sm font-medium mb-2">{file.name}</h4>
-                      <table className="w-full border-collapse text-sm">
+              <div className="space-y-6">
+                {uploadedFiles.map((file, fileIndex) => (
+                  <div key={fileIndex}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 text-primary text-xs font-bold">
+                        {fileIndex + 1}
+                      </div>
+                      <h4 className="text-sm font-medium">Datei {fileIndex + 1}: {file.name}</h4>
+                    </div>
+                    <div className="overflow-x-auto border border-border rounded-md">
+                      <table className="w-full border-collapse text-sm min-w-max">
                         <thead>
                           <tr className="bg-muted">
                             {file.headers.map((header, i) => (
-                              <th key={i} className="border border-border px-3 py-2 text-left font-medium">
+                              <th key={i} className="border-b border-r last:border-r-0 border-border px-3 py-2 text-left font-medium whitespace-nowrap">
                                 {header}
                               </th>
                             ))}
@@ -479,10 +645,10 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                         </thead>
                         <tbody>
                           {file.preview.map((row, rowIndex) => (
-                            <tr key={rowIndex}>
+                            <tr key={rowIndex} className="hover:bg-muted/50">
                               {row.map((cell, cellIndex) => (
-                                <td key={cellIndex} className="border border-border px-3 py-2">
-                                  {cell}
+                                <td key={cellIndex} className="border-b border-r last:border-r-0 border-border px-3 py-2 whitespace-nowrap">
+                                  {cell || <span className="text-muted-foreground italic">leer</span>}
                                 </td>
                               ))}
                             </tr>
@@ -490,9 +656,9 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                         </tbody>
                       </table>
                     </div>
-                  ))}
-                </div>
-              </ScrollArea>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -827,6 +993,58 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
             )}
           </CardContent>
         </Card>
+
+        {uploadedFiles.length > 0 && transformationSteps.length > 0 && transformedPreview && (
+          <Card className="border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Check className="h-5 w-5 text-primary" />
+                Transformierte Vorschau
+              </CardTitle>
+              <CardDescription>
+                Vorschau von Datei 1 nach {transformationSteps.length} Transformationsschritt{transformationSteps.length !== 1 ? "en" : ""}
+                {uploadedFiles.length > 1 && " (Dateien-Matching wird bei Ausführung angewendet)"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto border border-border rounded-md">
+                <table className="w-full border-collapse text-sm min-w-max" data-testid="table-transformed-preview">
+                  <thead>
+                    <tr className="bg-primary/10">
+                      {transformedPreview.headers.map((header, i) => (
+                        <th key={i} className="border-b border-r last:border-r-0 border-border px-3 py-2 text-left font-medium whitespace-nowrap">
+                          {header}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {transformedPreview.rows.length > 0 ? (
+                      transformedPreview.rows.map((row, rowIndex) => (
+                        <tr key={rowIndex} className="hover:bg-muted/50">
+                          {row.map((cell, cellIndex) => (
+                            <td key={cellIndex} className="border-b border-r last:border-r-0 border-border px-3 py-2 whitespace-nowrap">
+                              {cell || <span className="text-muted-foreground italic">leer</span>}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={transformedPreview.headers.length} className="text-center py-4 text-muted-foreground">
+                          Keine Zeilen nach Filterung übrig
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {transformedPreview.headers.length} Spalten, {transformedPreview.rows.length} Vorschauzeilen
+              </p>
+            </CardContent>
+          </Card>
+        )}
         </div>
       </div>
     </div>
