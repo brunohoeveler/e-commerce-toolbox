@@ -175,7 +175,7 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
         <div className="space-y-4">
           {executions.map((execution) => {
             const isExpanded = expandedId === execution.id;
-            const inputFiles = execution.inputFiles as { slotId: string; fileName: string }[] || [];
+            const inputFiles = execution.inputFiles as { slotId: string; fileName?: string; type?: string; amount?: number }[] || [];
             const attachments = (execution as any).attachments as { slotId: string; fileName: string; storagePath: string }[] || [];
             
             return (
@@ -241,40 +241,56 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
                           {attachments.length > 0 ? (
                             <div className="space-y-1">
                               {attachments.map((file, index) => (
-                                <div 
+                                <button 
                                   key={index} 
-                                  className="flex items-center justify-between gap-2 text-sm p-2 rounded-md bg-muted/50"
+                                  className="flex items-center justify-between gap-2 text-sm p-2 rounded-md bg-muted/50 w-full hover-elevate cursor-pointer text-left"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDownloadAttachment(execution.id, file.fileName);
+                                  }}
+                                  data-testid={`button-download-attachment-${index}`}
                                 >
                                   <div className="flex items-center gap-2 min-w-0">
                                     <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                    <span className="truncate">{file.fileName}</span>
+                                    <span className="truncate text-primary underline">{file.fileName}</span>
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDownloadAttachment(execution.id, file.fileName);
-                                    }}
-                                    data-testid={`button-download-attachment-${index}`}
-                                  >
-                                    <Download className="h-4 w-4" />
-                                  </Button>
-                                </div>
+                                  <Download className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                </button>
                               ))}
                             </div>
                           ) : inputFiles.length > 0 ? (
                             <div className="space-y-1">
-                              {inputFiles.map((file, index) => (
-                                <div 
-                                  key={index} 
-                                  className="flex items-center gap-2 text-sm p-2 rounded-md bg-muted/50"
-                                >
-                                  <File className="h-4 w-4 text-muted-foreground" />
-                                  <span className="truncate">{file.fileName}</span>
-                                  <Badge variant="secondary" className="text-xs">nur Referenz</Badge>
-                                </div>
-                              ))}
+                              {inputFiles.map((file, index) => {
+                                const hasAttachment = attachments.some(a => a.fileName === file.fileName);
+                                return (
+                                  <button 
+                                    key={index} 
+                                    className={`flex items-center gap-2 text-sm p-2 rounded-md bg-muted/50 w-full text-left ${hasAttachment ? 'hover-elevate cursor-pointer' : ''}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (file.fileName) {
+                                        handleDownloadAttachment(execution.id, file.fileName);
+                                      }
+                                    }}
+                                    disabled={!file.fileName}
+                                    data-testid={`button-download-inputfile-${index}`}
+                                  >
+                                    <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                    {file.fileName ? (
+                                      <>
+                                        <span className="truncate text-primary underline">{file.fileName}</span>
+                                        <Download className="h-4 w-4 text-muted-foreground flex-shrink-0 ml-auto" />
+                                      </>
+                                    ) : file.type === 'manual' ? (
+                                      <span className="truncate">
+                                        Manuelle Eingabe: {typeof file.amount === 'number' ? file.amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : file.amount}
+                                      </span>
+                                    ) : (
+                                      <span className="truncate text-muted-foreground">Keine Datei</span>
+                                    )}
+                                  </button>
+                                );
+                              })}
                             </div>
                           ) : (
                             <p className="text-sm text-muted-foreground">Keine Dateien</p>
