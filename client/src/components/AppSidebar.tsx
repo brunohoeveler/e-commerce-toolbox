@@ -10,6 +10,7 @@ import {
   ChevronDown,
   History,
 } from "lucide-react";
+import ecovisLogo from "@assets/Ecovis_Ball_Berry_1768979574924.jpg";
 import {
   Sidebar,
   SidebarContent,
@@ -79,9 +80,11 @@ export function AppSidebar({ mandanten, selectedMandant, onSelectMandant }: AppS
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary">
-            <Building2 className="h-5 w-5 text-primary-foreground" />
-          </div>
+          <img 
+            src={ecovisLogo} 
+            alt="Ecovis Logo" 
+            className="h-10 w-10 rounded-md object-cover"
+          />
           <div className="flex flex-col">
             <span className="text-sm font-semibold">Ecovis</span>
             <span className="text-xs text-muted-foreground">Mandanten Plattform</span>
