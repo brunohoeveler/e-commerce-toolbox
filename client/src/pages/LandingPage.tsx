@@ -38,7 +38,7 @@ export function LandingPage() {
               <img 
                 src={ecovisKsoLogo} 
                 alt="ECOVIS KSO Logo" 
-                className="h-10 object-contain"
+                className="h-14 object-contain"
               />
             </div>
             <Button asChild data-testid="button-login-nav">
