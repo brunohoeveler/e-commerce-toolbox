@@ -54,12 +54,14 @@ export const mandantUserAssignmentsRelations = relations(mandantUserAssignments,
 }));
 
 export const processStatusEnum = pgEnum("process_status", ["pending", "completed", "failed"]);
+export const processTypeEnum = pgEnum("process_type", ["revenue", "payments"]);
 
 export const processes = pgTable("processes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   mandantId: varchar("mandant_id").notNull(),
   name: text("name").notNull(),
   description: text("description"),
+  processType: processTypeEnum("process_type").notNull().default("payments"),
   inputFileCount: integer("input_file_count").notNull().default(1),
   inputFileSlots: jsonb("input_file_slots").notNull().default([]),
   transformationSteps: jsonb("transformation_steps").notNull().default([]),
@@ -85,6 +87,8 @@ export const processExecutions = pgTable("process_executions", {
   inputFiles: jsonb("input_files").notNull().default([]),
   outputData: jsonb("output_data"),
   transactionCount: integer("transaction_count").default(0),
+  totalAmount: text("total_amount"),
+  countryBreakdown: jsonb("country_breakdown"),
   executedAt: timestamp("executed_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });
