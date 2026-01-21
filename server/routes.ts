@@ -486,8 +486,10 @@ export async function registerRoutes(
       const attachments: { slotId: string; fileName: string; storagePath: string }[] = [];
       
       const envPrivateDir = globalThis.process.env.PRIVATE_OBJECT_DIR || '';
+      console.log("PRIVATE_OBJECT_DIR:", envPrivateDir);
       const bucketMatch = envPrivateDir.match(/^\/([^\/]+)\//);
       const bucketName = bucketMatch ? bucketMatch[1] : '';
+      console.log("bucketName:", bucketName, "validatedManualEntries:", validatedManualEntries.length);
       
       if (bucketName && inputFiles && Array.isArray(inputFiles)) {
         for (const fileInfo of inputFiles) {
