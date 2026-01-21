@@ -78,7 +78,7 @@ export function AppSidebar({ mandanten, selectedMandant, onSelectMandant }: AppS
 
   return (
     <Sidebar>
-      <SidebarHeader className="border-b border-sidebar-border p-4">
+      <SidebarHeader className="border-b border-sidebar-border p-4 bg-white dark:bg-white">
         <div className="flex items-center gap-3">
           <img 
             src={ecovisLogo} 
