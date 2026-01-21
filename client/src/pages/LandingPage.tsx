@@ -1,6 +1,7 @@
 import { ArrowRight, Shield, Zap, FileSpreadsheet, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import ecovisKsoLogo from "@assets/ECOVIS_KSO_Logo-2024_1768979835444.jpg";
 
 const features = [
   {
@@ -34,9 +35,11 @@ export function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center">
-                <FileSpreadsheet className="h-4 w-4 text-primary-foreground" />
-              </div>
+              <img 
+                src={ecovisKsoLogo} 
+                alt="ECOVIS KSO Logo" 
+                className="h-10 object-contain"
+              />
             </div>
             <Button asChild data-testid="button-login-nav">
               <a href="/api/login">Anmelden</a>
