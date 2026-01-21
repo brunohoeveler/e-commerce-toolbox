@@ -323,9 +323,30 @@ export async function registerRoutes(
       
       if (!(await requireMandantAccess(req, res, process.mandantId))) return;
 
-      const { month, year, inputFiles } = req.body;
+      const { month, year, inputFiles, manualEntries } = req.body;
       
       let transformedData: TransactionData;
+      let manualTotalAmount = 0;
+      
+      const validatedManualEntries: Array<{ slotId: string; amount: number; attachmentName?: string; attachmentContent?: string }> = [];
+      
+      if (manualEntries && Array.isArray(manualEntries)) {
+        for (const entry of manualEntries) {
+          const amount = typeof entry.amount === 'number' 
+            ? entry.amount 
+            : parseFloat(String(entry.amount || '0').replace(',', '.'));
+          
+          if (!isNaN(amount) && amount !== 0) {
+            validatedManualEntries.push({
+              slotId: entry.slotId || '',
+              amount,
+              attachmentName: entry.attachmentName,
+              attachmentContent: entry.attachmentContent,
+            });
+            manualTotalAmount += amount;
+          }
+        }
+      }
       
       const isPythonServiceAvailable = await checkPythonServiceHealth();
       
@@ -402,9 +423,11 @@ export async function registerRoutes(
         col.toLowerCase().includes('region')
       );
       
-      const executionTotalAmount = amountCol 
+      const fileBasedAmount = amountCol 
         ? transactions.reduce((sum: number, t: any) => sum + (parseFloat(t[amountCol]) || 0), 0)
         : (transformedData.summary?.totalAmount || 0);
+      
+      const executionTotalAmount = fileBasedAmount + manualTotalAmount;
       
       let countryBreakdown: Record<string, number> | null = null;
       if (countryCol && amountCol) {
@@ -416,16 +439,30 @@ export async function registerRoutes(
         }
       }
       
+      const allInputData = [
+        ...(inputFiles || []).map((f: any) => ({
+          slotId: f.slotId,
+          fileName: f.name || f.fileName,
+          type: 'file',
+        })),
+        ...validatedManualEntries.map((e) => ({
+          slotId: e.slotId,
+          amount: e.amount,
+          fileName: e.attachmentName,
+          type: 'manual',
+        })),
+      ];
+      
       const execution = await storage.createProcessExecution({
         processId: process.id,
         mandantId: process.mandantId,
         status: "completed",
         month: month || new Date().getMonth() + 1,
         year: year || new Date().getFullYear(),
-        inputFiles: inputFiles || [],
+        inputFiles: allInputData,
         attachments: [],
         outputData: transformedData,
-        transactionCount: transformedData.transactions?.length || 0,
+        transactionCount: transformedData.transactions?.length || (manualEntries?.length || 0),
         totalAmount: executionTotalAmount.toFixed(2),
         countryBreakdown: countryBreakdown,
       });
@@ -451,6 +488,27 @@ export async function registerRoutes(
             }
           } catch (uploadError) {
             console.error("Error uploading attachment:", uploadError);
+          }
+        }
+      }
+      
+      for (const entry of validatedManualEntries) {
+        if (entry.attachmentName && entry.attachmentContent) {
+          try {
+            const fileName = entry.attachmentName;
+            const storagePath = `.private/executions/${execution.id}/${fileName}`;
+            
+            const base64Data = entry.attachmentContent.split(',')[1] || entry.attachmentContent;
+            const buffer = Buffer.from(base64Data, 'base64');
+            
+            await objectStorageClient.uploadFile(storagePath, buffer);
+            attachments.push({
+              slotId: entry.slotId || '',
+              fileName,
+              storagePath,
+            });
+          } catch (uploadError) {
+            console.error("Error uploading manual attachment:", uploadError);
           }
         }
       }

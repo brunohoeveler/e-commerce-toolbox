@@ -514,17 +514,33 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                         onChange={(e) => updateFileSlot(slot.id, { description: e.target.value })}
                         data-testid={`input-file-slot-description-${index}`}
                       />
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id={`required-${slot.id}`}
-                          checked={slot.required}
-                          onChange={(e) => updateFileSlot(slot.id, { required: e.target.checked })}
-                          className="rounded"
-                        />
-                        <label htmlFor={`required-${slot.id}`} className="text-sm text-muted-foreground">
-                          Pflichtfeld
-                        </label>
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id={`required-${slot.id}`}
+                            checked={slot.required}
+                            onChange={(e) => updateFileSlot(slot.id, { required: e.target.checked })}
+                            className="rounded"
+                          />
+                          <label htmlFor={`required-${slot.id}`} className="text-sm text-muted-foreground">
+                            Pflichtfeld
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={slot.inputType || "file"}
+                            onValueChange={(value) => updateFileSlot(slot.id, { inputType: value as 'file' | 'manual' })}
+                          >
+                            <SelectTrigger className="w-40" data-testid={`select-input-type-${index}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="file">Datei-Upload</SelectItem>
+                              <SelectItem value="manual">Manuelle Eingabe</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     </div>
                   ))}

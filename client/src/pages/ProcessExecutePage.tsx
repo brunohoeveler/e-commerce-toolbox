@@ -9,10 +9,13 @@ import {
   CheckCircle2,
   AlertCircle,
   Calendar,
+  Euro,
+  Paperclip,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -43,6 +46,13 @@ interface UploadedFile {
   rowCount: number;
 }
 
+interface ManualEntry {
+  slotId: string;
+  amount: string;
+  attachmentName?: string;
+  attachmentContent?: string;
+}
+
 export function ProcessExecutePage({ processId, mandantId }: ProcessExecutePageProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -51,6 +61,7 @@ export function ProcessExecutePage({ processId, mandantId }: ProcessExecutePageP
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [manualEntries, setManualEntries] = useState<ManualEntry[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
 
   const { data: process, isLoading } = useQuery<Process>({
@@ -73,10 +84,20 @@ export function ProcessExecutePage({ processId, mandantId }: ProcessExecutePageP
         content: f.content,
       }));
       
+      const manualEntriesData = manualEntries
+        .filter(e => e.amount && parseFloat(e.amount) !== 0)
+        .map(e => ({
+          slotId: e.slotId,
+          amount: parseFloat(e.amount.replace(',', '.')),
+          attachmentName: e.attachmentName,
+          attachmentContent: e.attachmentContent,
+        }));
+      
       return apiRequest("POST", `/api/processes/${processId}/execute`, {
         month: selectedMonth,
         year: selectedYear,
         inputFiles: inputFilesData,
+        manualEntries: manualEntriesData,
       });
     },
     onSuccess: () => {
@@ -122,6 +143,40 @@ export function ProcessExecutePage({ processId, mandantId }: ProcessExecutePageP
     reader.readAsText(file);
   }, []);
 
+  const handleManualAmountChange = useCallback((slotId: string, amount: string) => {
+    setManualEntries(prev => {
+      const existing = prev.find(e => e.slotId === slotId);
+      if (existing) {
+        return prev.map(e => e.slotId === slotId ? { ...e, amount } : e);
+      }
+      return [...prev, { slotId, amount }];
+    });
+  }, []);
+
+  const handleManualAttachment = useCallback((slotId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setManualEntries(prev => {
+        const existing = prev.find(entry => entry.slotId === slotId);
+        if (existing) {
+          return prev.map(entry => 
+            entry.slotId === slotId 
+              ? { ...entry, attachmentName: file.name, attachmentContent: content }
+              : entry
+          );
+        }
+        return [...prev, { slotId, amount: "", attachmentName: file.name, attachmentContent: content }];
+      });
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
   const rawSlots = process?.inputFileSlots as InputFileSlot[] | undefined;
   const inputFileSlots: InputFileSlot[] = (rawSlots && rawSlots.length > 0) 
     ? rawSlots 
@@ -137,7 +192,14 @@ export function ProcessExecutePage({ processId, mandantId }: ProcessExecutePageP
     ? false  
     : requiredSlots.length === 0 
       ? true  
-      : requiredSlots.every(slot => uploadedFiles.some(f => f.slotId === slot.id));
+      : requiredSlots.every(slot => {
+          const slotInputType = slot.inputType || 'file';
+          if (slotInputType === 'manual') {
+            const entry = manualEntries.find(e => e.slotId === slot.id);
+            return entry && entry.amount && parseFloat(entry.amount.replace(',', '.')) !== 0;
+          }
+          return uploadedFiles.some(f => f.slotId === slot.id);
+        });
 
   const uploadProgress = inputFileSlots.length > 0
     ? Math.round((uploadedFiles.length / inputFileSlots.length) * 100)
@@ -289,51 +351,108 @@ export function ProcessExecutePage({ processId, mandantId }: ProcessExecutePageP
                 <div className="space-y-4">
                   {inputFileSlots.map((slot) => {
                     const uploadedFile = uploadedFiles.find(f => f.slotId === slot.id);
+                    const manualEntry = manualEntries.find(e => e.slotId === slot.id);
+                    const slotInputType = slot.inputType || 'file';
+                    const isManual = slotInputType === 'manual';
                     
                     return (
                       <div
                         key={slot.id}
-                        className="flex items-center justify-between rounded-lg border border-border p-4"
+                        className="rounded-lg border border-border p-4"
                       >
-                        <div className="flex items-center gap-4">
-                          <div className={`rounded-md p-2 ${uploadedFile ? 'bg-chart-2/10 text-chart-2' : 'bg-muted text-muted-foreground'}`}>
-                            <FileSpreadsheet className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{slot.name}</span>
-                              {slot.required && (
-                                <Badge variant="secondary" className="text-xs">Pflicht</Badge>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div className={`rounded-md p-2 ${
+                              isManual 
+                                ? (manualEntry?.amount ? 'bg-chart-2/10 text-chart-2' : 'bg-muted text-muted-foreground')
+                                : (uploadedFile ? 'bg-chart-2/10 text-chart-2' : 'bg-muted text-muted-foreground')
+                            }`}>
+                              {isManual ? <Euro className="h-5 w-5" /> : <FileSpreadsheet className="h-5 w-5" />}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{slot.name}</span>
+                                {slot.required && (
+                                  <Badge variant="secondary" className="text-xs">Pflicht</Badge>
+                                )}
+                                <Badge variant="outline" className="text-xs">
+                                  {isManual ? "Manuell" : "Datei"}
+                                </Badge>
+                              </div>
+                              {slot.description && (
+                                <p className="text-sm text-muted-foreground">{slot.description}</p>
+                              )}
+                              {!isManual && uploadedFile && (
+                                <p className="text-sm text-chart-2 mt-1">
+                                  <CheckCircle2 className="h-3 w-3 inline mr-1" />
+                                  {uploadedFile.name} ({uploadedFile.rowCount} Zeilen)
+                                </p>
                               )}
                             </div>
-                            {slot.description && (
-                              <p className="text-sm text-muted-foreground">{slot.description}</p>
-                            )}
-                            {uploadedFile && (
-                              <p className="text-sm text-chart-2 mt-1">
-                                <CheckCircle2 className="h-3 w-3 inline mr-1" />
-                                {uploadedFile.name} ({uploadedFile.rowCount} Zeilen)
-                              </p>
-                            )}
                           </div>
+                          {!isManual && (
+                            <div>
+                              <input
+                                type="file"
+                                accept=".csv,.txt,.xlsx,.xls"
+                                onChange={(e) => handleFileUpload(slot.id, e)}
+                                className="hidden"
+                                id={`file-upload-${slot.id}`}
+                              />
+                              <label htmlFor={`file-upload-${slot.id}`}>
+                                <Button variant={uploadedFile ? "outline" : "default"} asChild>
+                                  <span className="cursor-pointer">
+                                    <Upload className="h-4 w-4 mr-2" />
+                                    {uploadedFile ? "Ersetzen" : "Hochladen"}
+                                  </span>
+                                </Button>
+                              </label>
+                            </div>
+                          )}
                         </div>
-                        <div>
-                          <input
-                            type="file"
-                            accept=".csv,.txt,.xlsx,.xls"
-                            onChange={(e) => handleFileUpload(slot.id, e)}
-                            className="hidden"
-                            id={`file-upload-${slot.id}`}
-                          />
-                          <label htmlFor={`file-upload-${slot.id}`}>
-                            <Button variant={uploadedFile ? "outline" : "default"} asChild>
-                              <span className="cursor-pointer">
-                                <Upload className="h-4 w-4 mr-2" />
-                                {uploadedFile ? "Ersetzen" : "Hochladen"}
-                              </span>
-                            </Button>
-                          </label>
-                        </div>
+                        
+                        {isManual && (
+                          <div className="mt-4 space-y-3">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1">
+                                <label className="text-sm font-medium mb-1.5 block">Betrag (EUR)</label>
+                                <Input
+                                  type="text"
+                                  placeholder="z.B. 1234,56"
+                                  value={manualEntry?.amount || ""}
+                                  onChange={(e) => handleManualAmountChange(slot.id, e.target.value)}
+                                  data-testid={`input-manual-amount-${slot.id}`}
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium mb-1.5 block">Beleg anhängen (optional)</label>
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="file"
+                                  accept=".pdf,.png,.jpg,.jpeg"
+                                  onChange={(e) => handleManualAttachment(slot.id, e)}
+                                  className="hidden"
+                                  id={`attachment-upload-${slot.id}`}
+                                />
+                                <label htmlFor={`attachment-upload-${slot.id}`}>
+                                  <Button variant="outline" size="sm" asChild>
+                                    <span className="cursor-pointer">
+                                      <Paperclip className="h-4 w-4 mr-2" />
+                                      {manualEntry?.attachmentName ? "Ersetzen" : "PDF/Bild anhängen"}
+                                    </span>
+                                  </Button>
+                                </label>
+                                {manualEntry?.attachmentName && (
+                                  <span className="text-sm text-chart-2 flex items-center gap-1">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    {manualEntry.attachmentName}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

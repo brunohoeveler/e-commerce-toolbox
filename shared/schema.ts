@@ -190,6 +190,7 @@ export interface InputFileSlot {
   name: string;
   description?: string;
   required: boolean;
+  inputType?: 'file' | 'manual';
 }
 
 export interface FilePreview {
