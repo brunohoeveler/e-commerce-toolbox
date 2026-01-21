@@ -85,6 +85,7 @@ export const processExecutions = pgTable("process_executions", {
   month: integer("month").notNull(),
   year: integer("year").notNull(),
   inputFiles: jsonb("input_files").notNull().default([]),
+  attachments: jsonb("attachments").notNull().default([]),
   outputData: jsonb("output_data"),
   transactionCount: integer("transaction_count").default(0),
   totalAmount: text("total_amount"),

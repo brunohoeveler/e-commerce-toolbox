@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { 
   Clock, 
@@ -12,8 +12,11 @@ import {
   ChevronUp,
   File,
   Download,
-  Check
+  Trash2,
+  Paperclip
 } from "lucide-react";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +34,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type { ProcessExecution, Process } from "@shared/schema";
 
 interface ProcessExecutionsPageProps {
@@ -44,6 +58,7 @@ const MONTHS = [
 
 export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const { data: executions, isLoading: isLoadingExecutions } = useQuery<ProcessExecution[]>({
     queryKey: [`/api/process-executions?mandantId=${mandantId}`],
@@ -54,6 +69,31 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
     queryKey: [`/api/processes?mandantId=${mandantId}`],
     enabled: !!mandantId,
   });
+
+  const deleteExecutionMutation = useMutation({
+    mutationFn: async (executionId: string) => {
+      await apiRequest("DELETE", `/api/process-executions/${executionId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/process-executions?mandantId=${mandantId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/process-executions/recent'] });
+      toast({
+        title: "Ausführung gelöscht",
+        description: "Die Prozess-Ausführung wurde erfolgreich gelöscht.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Fehler",
+        description: "Die Ausführung konnte nicht gelöscht werden.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDownloadAttachment = (executionId: string, fileName: string) => {
+    window.open(`/api/process-executions/${executionId}/attachments/${encodeURIComponent(fileName)}`, '_blank');
+  };
 
   const getProcessName = (processId: string) => {
     return processes?.find(p => p.id === processId)?.name || "Unbekannter Prozess";
@@ -134,6 +174,7 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
           {executions.map((execution) => {
             const isExpanded = expandedId === execution.id;
             const inputFiles = execution.inputFiles as { slotId: string; fileName: string }[] || [];
+            const attachments = (execution as any).attachments as { slotId: string; fileName: string; storagePath: string }[] || [];
             
             return (
               <Collapsible
@@ -191,8 +232,36 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
                     <CardContent className="pt-0 space-y-4">
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                          <h4 className="font-medium text-sm text-muted-foreground">Input-Dateien</h4>
-                          {inputFiles.length > 0 ? (
+                          <h4 className="font-medium text-sm text-muted-foreground flex items-center gap-2">
+                            <Paperclip className="h-4 w-4" />
+                            Verwendete Dateien
+                          </h4>
+                          {attachments.length > 0 ? (
+                            <div className="space-y-1">
+                              {attachments.map((file, index) => (
+                                <div 
+                                  key={index} 
+                                  className="flex items-center justify-between gap-2 text-sm p-2 rounded-md bg-muted/50"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                    <span className="truncate">{file.fileName}</span>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDownloadAttachment(execution.id, file.fileName);
+                                    }}
+                                    data-testid={`button-download-attachment-${index}`}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : inputFiles.length > 0 ? (
                             <div className="space-y-1">
                               {inputFiles.map((file, index) => (
                                 <div 
@@ -201,6 +270,7 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
                                 >
                                   <File className="h-4 w-4 text-muted-foreground" />
                                   <span className="truncate">{file.fileName}</span>
+                                  <Badge variant="secondary" className="text-xs">nur Referenz</Badge>
                                 </div>
                               ))}
                             </div>
@@ -234,7 +304,7 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
                         </div>
                       </div>
 
-                      <div className="flex gap-2 pt-2 border-t">
+                      <div className="flex flex-wrap gap-2 pt-2 border-t">
                         <Button variant="outline" asChild data-testid={`button-open-process-${execution.id}`}>
                           <Link href={`/processes/${execution.processId}/execute`}>
                             <FileText className="h-4 w-4 mr-2" />
@@ -249,6 +319,36 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
                             </Link>
                           </Button>
                         )}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button 
+                              variant="destructive" 
+                              data-testid={`button-delete-execution-${execution.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Löschen
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Ausführung löschen?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Möchten Sie diese Prozess-Ausführung wirklich löschen? 
+                                Diese Aktion kann nicht rückgängig gemacht werden. 
+                                Alle zugehörigen Exporte werden ebenfalls gelöscht.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteExecutionMutation.mutate(execution.id)}
+                                data-testid={`button-confirm-delete-${execution.id}`}
+                              >
+                                {deleteExecutionMutation.isPending ? "Wird gelöscht..." : "Löschen"}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </CardContent>
                   </CollapsibleContent>

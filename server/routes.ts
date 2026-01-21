@@ -423,11 +423,41 @@ export async function registerRoutes(
         month: month || new Date().getMonth() + 1,
         year: year || new Date().getFullYear(),
         inputFiles: inputFiles || [],
+        attachments: [],
         outputData: transformedData,
         transactionCount: transformedData.transactions?.length || 0,
         totalAmount: executionTotalAmount.toFixed(2),
         countryBreakdown: countryBreakdown,
       });
+      
+      const attachments: { slotId: string; fileName: string; storagePath: string }[] = [];
+      
+      if (inputFiles && Array.isArray(inputFiles)) {
+        for (const fileInfo of inputFiles) {
+          try {
+            const fileName = fileInfo.fileName || fileInfo.name || 'file.csv';
+            const storagePath = `.private/executions/${execution.id}/${fileName}`;
+            
+            if (fileInfo.data) {
+              const csvContent = typeof fileInfo.data === 'string' 
+                ? fileInfo.data 
+                : JSON.stringify(fileInfo.data);
+              await objectStorageClient.uploadFile(storagePath, Buffer.from(csvContent, 'utf-8'));
+              attachments.push({
+                slotId: fileInfo.slotId || '',
+                fileName,
+                storagePath,
+              });
+            }
+          } catch (uploadError) {
+            console.error("Error uploading attachment:", uploadError);
+          }
+        }
+      }
+      
+      if (attachments.length > 0) {
+        await storage.updateProcessExecution(execution.id, { attachments } as any);
+      }
 
       res.status(201).json(execution);
     } catch (error) {
@@ -494,6 +524,62 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching recent executions:", error);
       res.status(500).json({ message: "Failed to fetch executions" });
+    }
+  });
+
+  app.delete("/api/process-executions/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      
+      const execution = await storage.getProcessExecutionById(id);
+      if (!execution) {
+        return res.status(404).json({ message: "Execution not found" });
+      }
+      
+      if (!(await requireMandantAccess(req, res, execution.mandantId))) return;
+      
+      const attachments = (execution.attachments as { storagePath: string }[]) || [];
+      for (const attachment of attachments) {
+        try {
+          await objectStorageClient.deleteFile(attachment.storagePath);
+        } catch (deleteError) {
+          console.error("Error deleting attachment from storage:", deleteError);
+        }
+      }
+      
+      await storage.deleteProcessExecution(id);
+      res.json({ message: "Execution deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting execution:", error);
+      res.status(500).json({ message: "Failed to delete execution" });
+    }
+  });
+
+  app.get("/api/process-executions/:id/attachments/:fileName", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id, fileName } = req.params;
+      
+      const execution = await storage.getProcessExecutionById(id);
+      if (!execution) {
+        return res.status(404).json({ message: "Execution not found" });
+      }
+      
+      if (!(await requireMandantAccess(req, res, execution.mandantId))) return;
+      
+      const attachments = (execution.attachments as { slotId: string; fileName: string; storagePath: string }[]) || [];
+      const attachment = attachments.find(a => a.fileName === fileName);
+      
+      if (!attachment) {
+        return res.status(404).json({ message: "Attachment not found" });
+      }
+      
+      const fileData = await objectStorageClient.downloadFile(attachment.storagePath);
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.setHeader("Content-Type", "text/csv");
+      res.send(fileData);
+    } catch (error) {
+      console.error("Error downloading attachment:", error);
+      res.status(500).json({ message: "Failed to download attachment" });
     }
   });
 

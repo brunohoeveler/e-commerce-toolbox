@@ -45,6 +45,8 @@ export interface IStorage {
   getUserAssignedMandanten(userId: string): Promise<Mandant[]>;
   getUserMandantAssignments(userId: string): Promise<MandantUserAssignment[]>;
   getExportRecord(id: string): Promise<ExportRecord | undefined>;
+  getProcessExecutionById(id: string): Promise<ProcessExecution | undefined>;
+  deleteProcessExecution(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -266,6 +268,16 @@ export class DatabaseStorage implements IStorage {
   async getExportRecord(id: string): Promise<ExportRecord | undefined> {
     const [record] = await db.select().from(exportRecords).where(eq(exportRecords.id, id));
     return record;
+  }
+
+  async getProcessExecutionById(id: string): Promise<ProcessExecution | undefined> {
+    const [execution] = await db.select().from(processExecutions).where(eq(processExecutions.id, id));
+    return execution;
+  }
+
+  async deleteProcessExecution(id: string): Promise<void> {
+    await db.delete(exportRecords).where(eq(exportRecords.processExecutionId, id));
+    await db.delete(processExecutions).where(eq(processExecutions.id, id));
   }
 }
 
