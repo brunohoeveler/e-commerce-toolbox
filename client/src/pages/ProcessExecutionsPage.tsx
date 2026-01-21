@@ -75,10 +75,16 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
       await apiRequest("DELETE", `/api/process-executions/${executionId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/process-executions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/process-executions/recent'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/financial-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/exports'] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey[0];
+          return typeof key === 'string' && (
+            key.startsWith('/api/process-executions') ||
+            key.startsWith('/api/financial-summary') ||
+            key.startsWith('/api/exports')
+          );
+        }
+      });
       toast({
         title: "Ausführung gelöscht",
         description: "Die Prozess-Ausführung wurde erfolgreich gelöscht.",
