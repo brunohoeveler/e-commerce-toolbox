@@ -453,6 +453,10 @@ export async function registerRoutes(
         })),
       ];
       
+      const fileTransactionCount = transformedData.transactions?.length || 0;
+      const manualEntryCount = validatedManualEntries.length;
+      const finalTransactionCount = fileTransactionCount > 0 ? fileTransactionCount : manualEntryCount;
+      
       const execution = await storage.createProcessExecution({
         processId: process.id,
         mandantId: process.mandantId,
@@ -462,7 +466,7 @@ export async function registerRoutes(
         inputFiles: allInputData,
         attachments: [],
         outputData: transformedData,
-        transactionCount: transformedData.transactions?.length || (manualEntries?.length || 0),
+        transactionCount: finalTransactionCount,
         totalAmount: executionTotalAmount.toFixed(2),
         countryBreakdown: countryBreakdown,
       });
@@ -633,7 +637,20 @@ export async function registerRoutes(
       
       const fileData = await objectStorageClient.downloadFile(attachment.storagePath);
       res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-      res.setHeader("Content-Type", "text/csv");
+      
+      const ext = fileName.toLowerCase().split('.').pop();
+      const contentTypes: Record<string, string> = {
+        'csv': 'text/csv',
+        'txt': 'text/plain',
+        'pdf': 'application/pdf',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'xls': 'application/vnd.ms-excel',
+      };
+      res.setHeader("Content-Type", contentTypes[ext || ''] || "application/octet-stream");
       res.send(fileData);
     } catch (error) {
       console.error("Error downloading attachment:", error);

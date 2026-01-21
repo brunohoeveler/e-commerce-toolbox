@@ -109,7 +109,16 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
   const completedExecutions = executions?.filter(e => e.status === "completed") || [];
   const pendingExecutions = executions?.filter(e => e.status === "pending") || [];
   const failedExecutions = executions?.filter(e => e.status === "failed") || [];
-  const totalTransactions = executions?.reduce((sum, e) => sum + (e.transactionCount || 0), 0) || 0;
+  
+  const revenueProcessIds = new Set(
+    processes?.filter(p => p.processType === "revenue").map(p => p.id) || []
+  );
+  const totalTransactions = executions?.reduce((sum, e) => {
+    if (revenueProcessIds.has(e.processId)) {
+      return sum + (e.transactionCount || 0);
+    }
+    return sum;
+  }, 0) || 0;
   
   const totalProcesses = processes?.length || 0;
   const completionRate = totalProcesses > 0 
