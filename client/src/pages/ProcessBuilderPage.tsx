@@ -128,9 +128,24 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
   };
 
   const updateFileSlot = (id: string, updates: Partial<InputFileSlot>) => {
-    setInputFileSlots(prev => prev.map(slot => 
-      slot.id === id ? { ...slot, ...updates } : slot
-    ));
+    setInputFileSlots(prev => prev.map((slot, index) => {
+      if (slot.id !== id) return slot;
+      
+      const newSlot = { ...slot, ...updates };
+      
+      if (updates.inputType) {
+        const defaultFileName = `Datei ${index + 1}`;
+        const defaultManualName = `Betrag ${index + 1}`;
+        
+        if (updates.inputType === 'manual' && (slot.name === defaultFileName || slot.name.startsWith('Datei '))) {
+          newSlot.name = defaultManualName;
+        } else if (updates.inputType === 'file' && (slot.name === defaultManualName || slot.name.startsWith('Betrag '))) {
+          newSlot.name = defaultFileName;
+        }
+      }
+      
+      return newSlot;
+    }));
   };
 
   const removeFileSlot = (id: string) => {
