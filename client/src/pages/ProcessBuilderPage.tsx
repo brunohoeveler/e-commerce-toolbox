@@ -74,6 +74,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
 
   const [processName, setProcessName] = useState("");
   const [processDescription, setProcessDescription] = useState("");
+  const [processType, setProcessType] = useState<"revenue" | "payments">("payments");
   const [inputFileSlots, setInputFileSlots] = useState<InputFileSlot[]>([
     { id: crypto.randomUUID(), name: "Datei 1", description: "", required: true }
   ]);
@@ -96,6 +97,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
     if (existingProcess && !isInitialized) {
       setProcessName(existingProcess.name || "");
       setProcessDescription(existingProcess.description || "");
+      setProcessType(existingProcess.processType || "payments");
       
       const slots = existingProcess.inputFileSlots as InputFileSlot[];
       if (slots && slots.length > 0) {
@@ -141,6 +143,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
         return apiRequest("PATCH", `/api/processes/${processId}`, {
           name: processName,
           description: processDescription,
+          processType,
           inputFileCount: inputFileSlots.length,
           inputFileSlots,
           transformationSteps,
@@ -150,6 +153,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
         mandantId,
         name: processName,
         description: processDescription,
+        processType,
         inputFileCount: inputFileSlots.length,
         inputFileSlots,
         transformationSteps,
@@ -292,6 +296,23 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                   onChange={(e) => setProcessName(e.target.value)}
                   data-testid="input-process-name"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="processType">Prozessart</Label>
+                <Select value={processType} onValueChange={(val: "revenue" | "payments") => setProcessType(val)}>
+                  <SelectTrigger id="processType" data-testid="select-process-type">
+                    <SelectValue placeholder="Prozessart wählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="payments" data-testid="option-payments">Zahlungseingänge</SelectItem>
+                    <SelectItem value="revenue" data-testid="option-revenue">Umsatzerlöse</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {processType === "payments" 
+                    ? "Verarbeitet eingehende Zahlungen (z.B. PayPal, Stripe)" 
+                    : "Erfasst Umsätze nach Ländern für Steuerberichte"}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="processDescription">Beschreibung</Label>

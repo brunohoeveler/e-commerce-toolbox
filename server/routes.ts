@@ -386,6 +386,36 @@ export async function registerRoutes(
         transformedData = executeTransformationPipeline(inputFiles || [], process.transformationSteps as any[] || []);
       }
       
+      const columns = transformedData.columns || [];
+      const transactions = transformedData.transactions || [];
+      
+      const amountCol = columns.find((col: string) => 
+        col.toLowerCase().includes('betrag') || 
+        col.toLowerCase().includes('amount') || 
+        col.toLowerCase().includes('summe')
+      );
+      
+      const countryCol = columns.find((col: string) => 
+        col.toLowerCase().includes('land') || 
+        col.toLowerCase().includes('country') || 
+        col.toLowerCase().includes('ländercode') ||
+        col.toLowerCase().includes('region')
+      );
+      
+      const executionTotalAmount = amountCol 
+        ? transactions.reduce((sum: number, t: any) => sum + (parseFloat(t[amountCol]) || 0), 0)
+        : (transformedData.summary?.totalAmount || 0);
+      
+      let countryBreakdown: Record<string, number> | null = null;
+      if (countryCol && amountCol) {
+        countryBreakdown = {};
+        for (const t of transactions) {
+          const country = String(t[countryCol] || 'Unbekannt').trim() || 'Unbekannt';
+          const amount = parseFloat(t[amountCol]) || 0;
+          countryBreakdown[country] = (countryBreakdown[country] || 0) + amount;
+        }
+      }
+      
       const execution = await storage.createProcessExecution({
         processId: process.id,
         mandantId: process.mandantId,
@@ -395,6 +425,8 @@ export async function registerRoutes(
         inputFiles: inputFiles || [],
         outputData: transformedData,
         transactionCount: transformedData.transactions?.length || 0,
+        totalAmount: executionTotalAmount.toFixed(2),
+        countryBreakdown: countryBreakdown,
       });
 
       res.status(201).json(execution);
@@ -462,6 +494,68 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching recent executions:", error);
       res.status(500).json({ message: "Failed to fetch executions" });
+    }
+  });
+
+  app.get("/api/financial-summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const { mandantId, month, year } = req.query;
+      
+      if (!mandantId) {
+        return res.status(400).json({ message: "mandantId required" });
+      }
+      
+      if (!(await requireMandantAccess(req, res, mandantId as string))) return;
+      
+      const processes = await storage.getProcesses(mandantId as string);
+      const executions = await storage.getProcessExecutions(
+        mandantId as string,
+        month ? parseInt(month as string) : undefined,
+        year ? parseInt(year as string) : undefined
+      );
+      
+      let totalRevenue = 0;
+      let totalPayments = 0;
+      const revenueByCountry: Record<string, number> = {};
+      const paymentsByCountry: Record<string, number> = {};
+      
+      for (const execution of executions) {
+        if (execution.status !== "completed") continue;
+        
+        const process = processes.find(p => p.id === execution.processId);
+        if (!process) continue;
+        
+        const amount = parseFloat(execution.totalAmount || "0");
+        const countryData = execution.countryBreakdown as Record<string, number> | null;
+        
+        if (process.processType === "revenue") {
+          totalRevenue += amount;
+          if (countryData) {
+            for (const [country, countryAmount] of Object.entries(countryData)) {
+              revenueByCountry[country] = (revenueByCountry[country] || 0) + countryAmount;
+            }
+          }
+        } else {
+          totalPayments += amount;
+          if (countryData) {
+            for (const [country, countryAmount] of Object.entries(countryData)) {
+              paymentsByCountry[country] = (paymentsByCountry[country] || 0) + countryAmount;
+            }
+          }
+        }
+      }
+      
+      res.json({
+        totalRevenue,
+        totalPayments,
+        revenueByCountry,
+        paymentsByCountry,
+        difference: totalRevenue - totalPayments,
+        ratio: totalRevenue > 0 ? (totalPayments / totalRevenue * 100).toFixed(1) : 0,
+      });
+    } catch (error) {
+      console.error("Error fetching financial summary:", error);
+      res.status(500).json({ message: "Failed to fetch financial summary" });
     }
   });
 

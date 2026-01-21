@@ -7,6 +7,9 @@ import {
   TrendingUp,
   Calendar,
   ChevronDown,
+  Euro,
+  ArrowRightLeft,
+  Globe,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -62,7 +65,30 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
     enabled: !!mandantId,
   });
 
-  const isLoading = processesLoading || executionsLoading;
+  interface FinancialSummary {
+    totalRevenue: number;
+    totalPayments: number;
+    revenueByCountry: Record<string, number>;
+    paymentsByCountry: Record<string, number>;
+    difference: number;
+    ratio: string;
+  }
+
+  const { data: financialSummary, isLoading: financialLoading } = useQuery<FinancialSummary>({
+    queryKey: ["/api/financial-summary", mandantId, selectedMonth + 1, selectedYear, viewMode],
+    queryFn: async () => {
+      const month = viewMode === "month" ? selectedMonth + 1 : undefined;
+      const url = `/api/financial-summary?mandantId=${mandantId}${month ? `&month=${month}&year=${selectedYear}` : `&year=${selectedYear}`}`;
+      const res = await fetch(url, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch financial summary");
+      return res.json();
+    },
+    enabled: !!mandantId,
+  });
+
+  const isLoading = processesLoading || executionsLoading || financialLoading;
 
   if (!mandantId) {
     return (
@@ -215,6 +241,119 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
           </CardContent>
         </Card>
       </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Umsatzerlöse</CardTitle>
+            <Euro className="h-4 w-4 text-chart-2" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-8 w-28" />
+            ) : (
+              <div className="text-2xl font-bold text-chart-2" data-testid="text-total-revenue">
+                {(financialSummary?.totalRevenue || 0).toLocaleString("de-DE", { style: "currency", currency: "EUR" })}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Erfasste Umsätze
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Zahlungseingänge</CardTitle>
+            <ArrowRightLeft className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-8 w-28" />
+            ) : (
+              <div className="text-2xl font-bold text-primary" data-testid="text-total-payments">
+                {(financialSummary?.totalPayments || 0).toLocaleString("de-DE", { style: "currency", currency: "EUR" })}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Eingegangene Zahlungen
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Verhältnis</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <div className="text-2xl font-bold" data-testid="text-payment-ratio">
+                {financialSummary?.ratio || 0}%
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Zahlungen / Umsatz
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {financialSummary && (Object.keys(financialSummary.revenueByCountry || {}).length > 0 || Object.keys(financialSummary.paymentsByCountry || {}).length > 0) && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {Object.keys(financialSummary.revenueByCountry || {}).length > 0 && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Globe className="h-5 w-5 text-chart-2" />
+                  Umsatz nach Ländern
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {Object.entries(financialSummary.revenueByCountry)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([country, amount]) => (
+                      <div key={country} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                        <span className="font-medium">{country}</span>
+                        <span className="text-sm font-medium text-chart-2">
+                          {amount.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
+          {Object.keys(financialSummary.paymentsByCountry || {}).length > 0 && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Globe className="h-5 w-5 text-primary" />
+                  Zahlungen nach Ländern
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {Object.entries(financialSummary.paymentsByCountry)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([country, amount]) => (
+                      <div key={country} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                        <span className="font-medium">{country}</span>
+                        <span className="text-sm font-medium text-primary">
+                          {amount.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
