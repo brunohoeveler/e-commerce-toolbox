@@ -77,6 +77,8 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/process-executions?mandantId=${mandantId}`] });
       queryClient.invalidateQueries({ queryKey: ['/api/process-executions/recent'] });
+      queryClient.invalidateQueries({ queryKey: [`/api/financial-summary?mandantId=${mandantId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/exports'] });
       toast({
         title: "Ausführung gelöscht",
         description: "Die Prozess-Ausführung wurde erfolgreich gelöscht.",
