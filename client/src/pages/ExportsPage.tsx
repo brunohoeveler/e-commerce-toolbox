@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Download, FileDown, FileSpreadsheet, Clock, CheckCircle2 } from "lucide-react";
+import { Download, FileDown, FileSpreadsheet, Clock, CheckCircle2, Receipt, Euro, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import type { ProcessExecution, ExportRecord } from "@shared/schema";
+import type { ProcessExecution, ExportRecord, Process } from "@shared/schema";
 
 interface ExportsPageProps {
   mandantId: string | null;
@@ -29,6 +30,19 @@ interface ExportsPageProps {
 
 export function ExportsPage({ mandantId }: ExportsPageProps) {
   const { toast } = useToast();
+  const [selectedFormats, setSelectedFormats] = useState<Record<string, "ascii" | "datev">>({});
+
+  const { data: processes } = useQuery<Process[]>({
+    queryKey: ["/api/processes", mandantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/processes?mandantId=${mandantId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch processes");
+      return res.json();
+    },
+    enabled: !!mandantId,
+  });
 
   const { data: completedExecutions, isLoading: executionsLoading } = useQuery<ProcessExecution[]>({
     queryKey: ["/api/process-executions/completed", mandantId],
@@ -81,6 +95,30 @@ export function ExportsPage({ mandantId }: ExportsPageProps) {
     },
   });
 
+  const getProcessInfo = (processId: string) => {
+    return processes?.find(p => p.id === processId);
+  };
+
+  const hasFileInputs = (execution: ProcessExecution) => {
+    const process = getProcessInfo(execution.processId);
+    if (!process) return false;
+    const inputFileSlots = process.inputFileSlots as Array<{ id: string; name: string; type?: string }> | null;
+    if (!inputFileSlots || inputFileSlots.length === 0) return false;
+    const hasFileSlot = inputFileSlots.some(slot => slot.type !== 'manual');
+    return hasFileSlot;
+  };
+
+  const fileBasedExecutions = completedExecutions?.filter(hasFileInputs) || [];
+
+  const handleExport = (executionId: string) => {
+    const format = selectedFormats[executionId] || "ascii";
+    exportMutation.mutate({ executionId, format });
+  };
+
+  const handleDownloadExport = (exportId: string) => {
+    window.open(`/api/exports/${exportId}/download`, "_blank");
+  };
+
   const isLoading = executionsLoading || exportsLoading;
 
   if (!mandantId) {
@@ -104,19 +142,19 @@ export function ExportsPage({ mandantId }: ExportsPageProps) {
       <div>
         <h1 className="text-2xl font-bold">Exporte</h1>
         <p className="text-muted-foreground">
-          Exportieren Sie verarbeitete Daten als ASCII oder DATEV-Format
+          Exportieren Sie verarbeitete Daten als CSV im ASCII- oder DATEV-Format
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-chart-2" />
-              Verfügbare Exporte
+              Prozess-Exporte
             </CardTitle>
             <CardDescription>
-              Abgeschlossene Prozesse, die exportiert werden können
+              Abgeschlossene Prozesse mit Datei-Input als CSV exportieren (Separator: ";")
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -126,51 +164,92 @@ export function ExportsPage({ mandantId }: ExportsPageProps) {
                   <Skeleton key={i} className="h-16 w-full" />
                 ))}
               </div>
-            ) : completedExecutions && completedExecutions.length > 0 ? (
+            ) : fileBasedExecutions.length > 0 ? (
               <div className="space-y-3">
-                {completedExecutions.map((execution) => (
-                  <div
-                    key={execution.id}
-                    className="flex items-center justify-between rounded-md border border-border p-4"
-                    data-testid={`export-item-${execution.id}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <FileSpreadsheet className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="font-medium">Prozess-Ausführung</p>
-                        <p className="text-sm text-muted-foreground">
-                          {execution.month}/{execution.year} • {execution.transactionCount || 0} Transaktionen
-                        </p>
+                {fileBasedExecutions.map((execution) => {
+                  const process = getProcessInfo(execution.processId);
+                  return (
+                    <div
+                      key={execution.id}
+                      className="flex items-center justify-between rounded-md border border-border p-4"
+                      data-testid={`export-item-${execution.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileSpreadsheet className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="font-medium">{process?.name || "Prozess"}</p>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span>{execution.month}/{execution.year}</span>
+                            <span>•</span>
+                            <span>{execution.transactionCount || 0} Transaktionen</span>
+                            {execution.totalAmount && (
+                              <>
+                                <span>•</span>
+                                <span>{parseFloat(execution.totalAmount).toLocaleString("de-DE", { style: "currency", currency: "EUR" })}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={selectedFormats[execution.id] || "ascii"}
+                          onValueChange={(value) => 
+                            setSelectedFormats(prev => ({ ...prev, [execution.id]: value as "ascii" | "datev" }))
+                          }
+                        >
+                          <SelectTrigger className="w-36" data-testid={`select-export-format-${execution.id}`}>
+                            <SelectValue placeholder="Format wählen" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ascii">ASCII Format</SelectItem>
+                            <SelectItem value="datev">DATEV Format</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button 
+                          onClick={() => handleExport(execution.id)}
+                          disabled={exportMutation.isPending}
+                          data-testid={`button-export-${execution.id}`}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Exportieren
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        onValueChange={(format) => 
-                          exportMutation.mutate({ 
-                            executionId: execution.id, 
-                            format: format as "ascii" | "datev" 
-                          })
-                        }
-                      >
-                        <SelectTrigger className="w-32" data-testid={`select-export-format-${execution.id}`}>
-                          <SelectValue placeholder="Export" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ascii">ASCII</SelectItem>
-                          <SelectItem value="datev">DATEV</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground">
                 <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>Keine abgeschlossenen Prozesse</p>
-                <p className="text-sm">Führen Sie zuerst Prozesse aus</p>
+                <p>Keine exportierbaren Prozesse</p>
+                <p className="text-sm">Führen Sie zuerst Prozesse mit Datei-Input aus</p>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Euro className="h-5 w-5 text-chart-4" />
+              Umsatzsteuerliche Exporte
+            </CardTitle>
+            <CardDescription>
+              Zusätzliche Downloads für den umsatzsteuerlichen Bereich
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border border-dashed border-border p-6 text-center">
+              <Receipt className="h-10 w-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+              <p className="text-muted-foreground mb-2">
+                Umsatzsteuerliche Exporte werden nach Abschluss bestimmter Prozesse verfügbar
+              </p>
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <AlertCircle className="h-4 w-4" />
+                <span>Diese Funktion wird in Kürze freigeschaltet</span>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -198,7 +277,7 @@ export function ExportsPage({ mandantId }: ExportsPageProps) {
                     <TableHead>Name</TableHead>
                     <TableHead>Format</TableHead>
                     <TableHead>Datum</TableHead>
-                    <TableHead></TableHead>
+                    <TableHead className="text-right">Aktion</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -213,8 +292,13 @@ export function ExportsPage({ mandantId }: ExportsPageProps) {
                       <TableCell className="text-muted-foreground">
                         {record.exportedAt ? new Date(record.exportedAt).toLocaleDateString("de-DE") : "-"}
                       </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" data-testid={`button-download-${record.id}`}>
+                      <TableCell className="text-right">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => handleDownloadExport(record.id)}
+                          data-testid={`button-download-${record.id}`}
+                        >
                           <Download className="h-4 w-4" />
                         </Button>
                       </TableCell>
