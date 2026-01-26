@@ -119,6 +119,47 @@ def apply_transformation(df: pl.DataFrame, step: dict, all_dataframes: dict) -> 
             elif operator == 'is_not_empty':
                 df = df.filter(col_expr.is_not_null() & (col_expr.cast(pl.Utf8) != ''))
     
+    elif step_type == 'conditional':
+        source_column = config.get('sourceColumn', '')
+        condition = config.get('condition', 'contains')
+        search_value = config.get('searchValue', '')
+        target_type = config.get('targetType', 'existing')
+        target_column = config.get('targetColumn', '')
+        then_value = config.get('thenValue', '')
+        else_value = config.get('elseValue', '')
+        
+        if source_column and target_column and source_column in df.columns:
+            col_expr = pl.col(source_column).cast(pl.Utf8)
+            
+            if condition == 'contains':
+                condition_expr = col_expr.str.contains(search_value, literal=True)
+            elif condition == 'equals':
+                condition_expr = col_expr == search_value
+            elif condition == 'not_contains':
+                condition_expr = ~col_expr.str.contains(search_value, literal=True)
+            elif condition == 'not_equals':
+                condition_expr = col_expr != search_value
+            elif condition == 'starts_with':
+                condition_expr = col_expr.str.starts_with(search_value)
+            elif condition == 'ends_with':
+                condition_expr = col_expr.str.ends_with(search_value)
+            elif condition == 'is_empty':
+                condition_expr = col_expr.is_null() | (col_expr == '')
+            elif condition == 'is_not_empty':
+                condition_expr = col_expr.is_not_null() & (col_expr != '')
+            else:
+                condition_expr = col_expr.str.contains(search_value, literal=True)
+            
+            if else_value:
+                result_expr = pl.when(condition_expr).then(pl.lit(then_value)).otherwise(pl.lit(else_value))
+            else:
+                if target_type == 'new' or target_column not in df.columns:
+                    result_expr = pl.when(condition_expr).then(pl.lit(then_value)).otherwise(pl.lit(''))
+                else:
+                    result_expr = pl.when(condition_expr).then(pl.lit(then_value)).otherwise(pl.col(target_column).cast(pl.Utf8))
+            
+            df = df.with_columns(result_expr.alias(target_column))
+    
     elif step_type == 'match_files':
         source_file = config.get('sourceFile', '')
         target_file = config.get('targetFile', '')

@@ -181,7 +181,7 @@ export type MandantUserAssignment = typeof mandantUserAssignments.$inferSelect;
 
 export interface TransformationStep {
   id: string;
-  type: 'remove_column' | 'add_column' | 'rename_column' | 'merge_columns' | 'split_column' | 'remove_string' | 'match_files' | 'filter_rows';
+  type: 'remove_column' | 'add_column' | 'rename_column' | 'merge_columns' | 'split_column' | 'remove_string' | 'match_files' | 'filter_rows' | 'conditional';
   config: Record<string, unknown>;
 }
 

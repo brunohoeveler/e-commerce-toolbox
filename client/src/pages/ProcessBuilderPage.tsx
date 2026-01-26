@@ -16,6 +16,7 @@ import {
   Link2,
   Save,
   Check,
+  GitBranch,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ const TRANSFORMATION_TYPES = [
   { type: "remove_string", label: "Text entfernen", icon: Type, color: "bg-chart-5/10 text-chart-5" },
   { type: "match_files", label: "Dateien matchen", icon: Link2, color: "bg-accent text-accent-foreground" },
   { type: "filter_rows", label: "Zeilen filtern", icon: Filter, color: "bg-muted text-muted-foreground" },
+  { type: "conditional", label: "Wenn-Dann-Sonst", icon: GitBranch, color: "bg-chart-1/10 text-chart-1" },
 ] as const;
 
 interface UploadedFile {
@@ -1021,6 +1023,107 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                               onChange={(e) => updateStepConfig(step.id, { ...step.config, value: e.target.value })}
                               className="w-40"
                             />
+                          </div>
+                        )}
+
+                        {step.type === "conditional" && (
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium">WENN</span>
+                              <Select
+                                value={(step.config.sourceColumn as string) || ""}
+                                onValueChange={(v) => updateStepConfig(step.id, { ...step.config, sourceColumn: v })}
+                              >
+                                <SelectTrigger className="w-40">
+                                  <SelectValue placeholder="Spalte wählen" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {uniqueHeaders.map((h) => (
+                                    <SelectItem key={h} value={h}>{h}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Select
+                                value={(step.config.condition as string) || "contains"}
+                                onValueChange={(v) => updateStepConfig(step.id, { ...step.config, condition: v })}
+                              >
+                                <SelectTrigger className="w-36">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="contains">enthält</SelectItem>
+                                  <SelectItem value="equals">ist gleich</SelectItem>
+                                  <SelectItem value="not_contains">enthält nicht</SelectItem>
+                                  <SelectItem value="not_equals">ist ungleich</SelectItem>
+                                  <SelectItem value="starts_with">beginnt mit</SelectItem>
+                                  <SelectItem value="ends_with">endet mit</SelectItem>
+                                  <SelectItem value="is_empty">ist leer</SelectItem>
+                                  <SelectItem value="is_not_empty">ist nicht leer</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {!["is_empty", "is_not_empty"].includes((step.config.condition as string) || "") && (
+                                <Input
+                                  placeholder="Suchwert"
+                                  value={(step.config.searchValue as string) || ""}
+                                  onChange={(e) => updateStepConfig(step.id, { ...step.config, searchValue: e.target.value })}
+                                  className="w-40"
+                                />
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium">DANN setze</span>
+                              <Select
+                                value={(step.config.targetType as string) || "existing"}
+                                onValueChange={(v) => updateStepConfig(step.id, { ...step.config, targetType: v, targetColumn: "" })}
+                              >
+                                <SelectTrigger className="w-36">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="existing">bestehende Spalte</SelectItem>
+                                  <SelectItem value="new">neue Spalte</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {(step.config.targetType as string) === "new" ? (
+                                <Input
+                                  placeholder="Neuer Spaltenname"
+                                  value={(step.config.targetColumn as string) || ""}
+                                  onChange={(e) => updateStepConfig(step.id, { ...step.config, targetColumn: e.target.value })}
+                                  className="w-40"
+                                />
+                              ) : (
+                                <Select
+                                  value={(step.config.targetColumn as string) || ""}
+                                  onValueChange={(v) => updateStepConfig(step.id, { ...step.config, targetColumn: v })}
+                                >
+                                  <SelectTrigger className="w-40">
+                                    <SelectValue placeholder="Zielspalte" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {uniqueHeaders.map((h) => (
+                                      <SelectItem key={h} value={h}>{h}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                              <span className="text-sm">auf</span>
+                              <Input
+                                placeholder="Dann-Wert"
+                                value={(step.config.thenValue as string) || ""}
+                                onChange={(e) => updateStepConfig(step.id, { ...step.config, thenValue: e.target.value })}
+                                className="w-40"
+                              />
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium">SONST setze auf</span>
+                              <Input
+                                placeholder="Sonst-Wert (optional)"
+                                value={(step.config.elseValue as string) || ""}
+                                onChange={(e) => updateStepConfig(step.id, { ...step.config, elseValue: e.target.value })}
+                                className="w-40"
+                              />
+                              <span className="text-xs text-muted-foreground">(leer = Wert beibehalten)</span>
+                            </div>
                           </div>
                         )}
                       </div>
