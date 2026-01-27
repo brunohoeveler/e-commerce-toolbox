@@ -85,7 +85,12 @@ export function ExportsPage({ mandantId }: ExportsPageProps) {
         description: "Die Datei wird heruntergeladen.",
       });
       if (data && typeof data === 'object' && 'downloadUrl' in data) {
-        window.open(data.downloadUrl as string, "_blank");
+        const link = document.createElement('a');
+        link.href = data.downloadUrl as string;
+        link.download = '';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
     },
     onError: () => {
