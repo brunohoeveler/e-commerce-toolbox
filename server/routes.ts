@@ -822,10 +822,10 @@ export async function registerRoutes(
       
       if (!(await requireMandantAccess(req, res, exportRecord.mandantId))) return;
       
-      const filename = `${exportRecord.name}.${exportRecord.format === 'datev' ? 'csv' : 'txt'}`;
+      const filename = `${exportRecord.name}.csv`;
       const content = formatExportContent(exportRecord.exportData, exportRecord.format);
       
-      res.setHeader("Content-Type", exportRecord.format === 'datev' ? "text/csv" : "text/plain");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.send(content);
     } catch (error) {
@@ -1155,18 +1155,17 @@ function generateDatevExport(transactions: Array<Record<string, any>>, mandant: 
 
 function generateAsciiExport(outputData: any, delimiter: string): any {
   const columns = outputData?.columns || [];
-  const data = outputData?.data || [];
+  const transactions = outputData?.transactions || [];
   
-  if (columns.length > 0 && data.length > 0) {
+  if (columns.length > 0 && transactions.length > 0) {
     return { 
       columns, 
-      data, 
+      data: transactions, 
       format: 'ASCII', 
       delimiter 
     };
   }
   
-  const transactions = outputData?.transactions || [];
   const lines = transactions.map((t: any) => ({
     datum: t.datum,
     betrag: parseFloat(t.betrag) || 0,
