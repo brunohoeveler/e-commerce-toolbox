@@ -31,6 +31,7 @@ interface ExportsPageProps {
 export function ExportsPage({ mandantId }: ExportsPageProps) {
   const { toast } = useToast();
   const [selectedFormats, setSelectedFormats] = useState<Record<string, "ascii" | "datev">>({});
+  const [selectedDelimiters, setSelectedDelimiters] = useState<Record<string, "comma" | "semicolon" | "tab">>({});
 
   const { data: processes } = useQuery<Process[]>({
     queryKey: ["/api/processes", mandantId],
@@ -69,10 +70,11 @@ export function ExportsPage({ mandantId }: ExportsPageProps) {
   });
 
   const exportMutation = useMutation({
-    mutationFn: async ({ executionId, format }: { executionId: string; format: "ascii" | "datev" }) => {
+    mutationFn: async ({ executionId, format, delimiter }: { executionId: string; format: "ascii" | "datev"; delimiter?: "comma" | "semicolon" | "tab" }) => {
       const response = await apiRequest("POST", `/api/exports`, {
         processExecutionId: executionId,
         format,
+        delimiter: format === "ascii" ? (delimiter || "semicolon") : undefined,
         mandantId,
       });
       return response;
@@ -112,7 +114,8 @@ export function ExportsPage({ mandantId }: ExportsPageProps) {
 
   const handleExport = (executionId: string) => {
     const format = selectedFormats[executionId] || "ascii";
-    exportMutation.mutate({ executionId, format });
+    const delimiter = selectedDelimiters[executionId] || "semicolon";
+    exportMutation.mutate({ executionId, format, delimiter });
   };
 
   const handleDownloadExport = (exportId: string) => {
@@ -202,10 +205,27 @@ export function ExportsPage({ mandantId }: ExportsPageProps) {
                             <SelectValue placeholder="Format wählen" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="ascii">ASCII Format</SelectItem>
+                            <SelectItem value="ascii">ASCII (CSV)</SelectItem>
                             <SelectItem value="datev">DATEV Format</SelectItem>
                           </SelectContent>
                         </Select>
+                        {(selectedFormats[execution.id] || "ascii") === "ascii" && (
+                          <Select
+                            value={selectedDelimiters[execution.id] || "semicolon"}
+                            onValueChange={(value) => 
+                              setSelectedDelimiters(prev => ({ ...prev, [execution.id]: value as "comma" | "semicolon" | "tab" }))
+                            }
+                          >
+                            <SelectTrigger className="w-32" data-testid={`select-delimiter-${execution.id}`}>
+                              <SelectValue placeholder="Trennzeichen" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="semicolon">Semikolon (;)</SelectItem>
+                              <SelectItem value="comma">Komma (,)</SelectItem>
+                              <SelectItem value="tab">Tabulator</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                         <Button 
                           onClick={() => handleExport(execution.id)}
                           disabled={exportMutation.isPending}

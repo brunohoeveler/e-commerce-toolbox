@@ -777,7 +777,7 @@ export async function registerRoutes(
   app.post("/api/exports", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const { processExecutionId, format, mandantId } = req.body;
+      const { processExecutionId, format, delimiter, mandantId } = req.body;
       
       if (!(await requireMandantAccess(req, res, mandantId))) return;
       
@@ -791,7 +791,7 @@ export async function registerRoutes(
       }
 
       const mandant = await storage.getMandant(mandantId);
-      const exportData = generateExportData(execution, format, mandant);
+      const exportData = generateExportData(execution, format, mandant, delimiter);
 
       const exportRecord = await storage.createExportRecord({
         mandantId,
@@ -1106,14 +1106,21 @@ function applyTransformationStep(
   }
 }
 
-function generateExportData(execution: any, format: string, mandant: any): any {
-  const data = execution.outputData as TransactionData;
-  const transactions = data?.transactions || [];
+function generateExportData(execution: any, format: string, mandant: any, delimiter?: string): any {
+  const outputData = execution.outputData;
   
   if (format === 'datev') {
+    const data = outputData as TransactionData;
+    const transactions = data?.transactions || [];
     return generateDatevExport(transactions, mandant);
   } else {
-    return generateAsciiExport(transactions, mandant);
+    const delimiterMap: Record<string, string> = {
+      'comma': ',',
+      'semicolon': ';',
+      'tab': '\t'
+    };
+    const actualDelimiter = delimiterMap[delimiter || 'semicolon'] || ';';
+    return generateAsciiExport(outputData, actualDelimiter);
   }
 }
 
@@ -1146,8 +1153,21 @@ function generateDatevExport(transactions: Array<Record<string, any>>, mandant: 
   return { header, buchungen };
 }
 
-function generateAsciiExport(transactions: Array<Record<string, any>>, mandant: any): any {
-  const lines = transactions.map(t => ({
+function generateAsciiExport(outputData: any, delimiter: string): any {
+  const columns = outputData?.columns || [];
+  const data = outputData?.data || [];
+  
+  if (columns.length > 0 && data.length > 0) {
+    return { 
+      columns, 
+      data, 
+      format: 'ASCII', 
+      delimiter 
+    };
+  }
+  
+  const transactions = outputData?.transactions || [];
+  const lines = transactions.map((t: any) => ({
     datum: t.datum,
     betrag: parseFloat(t.betrag) || 0,
     text: t.beschreibung || '',
@@ -1155,7 +1175,7 @@ function generateAsciiExport(transactions: Array<Record<string, any>>, mandant: 
     gegenkonto: calculateGegenkonto(t.typ, 4),
   }));
   
-  return { lines, format: 'ASCII', delimiter: ';' };
+  return { lines, format: 'ASCII', delimiter };
 }
 
 function calculateKonto(typ: string, length: number): string {
@@ -1211,12 +1231,34 @@ function formatExportContent(exportData: any, format: string): string {
     
     return [headerLine, columnHeader, ...dataLines].join('\r\n');
   } else {
-    const { lines, delimiter } = exportData;
-    const headerLine = `Datum${delimiter}Betrag${delimiter}Text${delimiter}Konto${delimiter}Gegenkonto`;
-    const dataLines = lines.map((l: any) => 
-      `${l.datum}${delimiter}${l.betrag.toFixed(2).replace('.', ',')}${delimiter}${l.text}${delimiter}${l.konto}${delimiter}${l.gegenkonto}`
-    );
-    return [headerLine, ...dataLines].join('\r\n');
+    const { columns, data, lines, delimiter } = exportData;
+    
+    if (columns && columns.length > 0 && data && data.length > 0) {
+      const escapeValue = (val: any): string => {
+        if (val === null || val === undefined) return '';
+        const str = String(val);
+        if (str.includes(delimiter) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+      
+      const headerLine = columns.map(escapeValue).join(delimiter);
+      const dataLines = data.map((row: Record<string, any>) => 
+        columns.map((col: string) => escapeValue(row[col])).join(delimiter)
+      );
+      return [headerLine, ...dataLines].join('\r\n');
+    }
+    
+    if (lines && lines.length > 0) {
+      const headerLine = `Datum${delimiter}Betrag${delimiter}Text${delimiter}Konto${delimiter}Gegenkonto`;
+      const dataLines = lines.map((l: any) => 
+        `${l.datum}${delimiter}${l.betrag.toFixed(2).replace('.', ',')}${delimiter}${l.text}${delimiter}${l.konto}${delimiter}${l.gegenkonto}`
+      );
+      return [headerLine, ...dataLines].join('\r\n');
+    }
+    
+    return '';
   }
 }
 
