@@ -77,16 +77,16 @@ export function ExportsPage({ mandantId }: ExportsPageProps) {
         delimiter: format === "ascii" ? (delimiter || "semicolon") : undefined,
         mandantId,
       });
-      return response;
+      return response.json();
     },
     onSuccess: (data) => {
       toast({
         title: "Export erstellt",
         description: "Die Datei wird heruntergeladen.",
       });
-      if (data && typeof data === 'object' && 'downloadUrl' in data) {
+      if (data && data.downloadUrl) {
         const link = document.createElement('a');
-        link.href = data.downloadUrl as string;
+        link.href = data.downloadUrl;
         link.download = '';
         document.body.appendChild(link);
         link.click();
