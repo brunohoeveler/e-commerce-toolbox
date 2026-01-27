@@ -27,7 +27,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -275,12 +277,62 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
 
   const allHeaders = uploadedFiles.flatMap(f => f.headers);
   const uniqueHeaders = Array.from(new Set(allHeaders));
+  
+  const headersWithSource: { header: string; source: string; slotName: string }[] = [];
+  const headersBySlot: Record<string, { headers: string[]; slotName: string }> = {};
+  
+  uploadedFiles.forEach((file, fileIndex) => {
+    const slot = inputFileSlots[fileIndex];
+    const slotName = slot?.name || `Datei ${fileIndex + 1}`;
+    
+    if (!headersBySlot[slotName]) {
+      headersBySlot[slotName] = { headers: [], slotName };
+    }
+    
+    file.headers.forEach(header => {
+      if (!headersWithSource.find(h => h.header === header)) {
+        headersWithSource.push({ header, source: file.name, slotName });
+      }
+      if (!headersBySlot[slotName].headers.includes(header)) {
+        headersBySlot[slotName].headers.push(header);
+      }
+    });
+  });
+  
+  const renderGroupedColumnOptions = () => {
+    const slots = Object.keys(headersBySlot);
+    if (slots.length <= 1) {
+      return uniqueHeaders.map((h) => (
+        <SelectItem key={h} value={h}>{h}</SelectItem>
+      ));
+    }
+    return slots.map(slotName => (
+      <SelectGroup key={slotName}>
+        <SelectLabel className="text-xs text-muted-foreground">{slotName}</SelectLabel>
+        {headersBySlot[slotName].headers.map(header => (
+          <SelectItem key={`${slotName}-${header}`} value={header}>
+            {header}
+          </SelectItem>
+        ))}
+      </SelectGroup>
+    ));
+  };
 
   const applyTransformations = useCallback(() => {
     if (uploadedFiles.length === 0) return null;
     
     let headers = [...uploadedFiles[0].headers];
     let rows = uploadedFiles[0].preview.map(row => [...row]);
+    
+    const fileDataBySlot: Record<string, { headers: string[]; rows: string[][] }> = {};
+    uploadedFiles.forEach((file, index) => {
+      const slot = inputFileSlots[index];
+      const slotName = slot?.name || `Datei ${index + 1}`;
+      fileDataBySlot[slotName] = {
+        headers: [...file.headers],
+        rows: file.preview.map(row => [...row])
+      };
+    });
     
     for (const step of transformationSteps) {
       switch (step.type) {
@@ -385,11 +437,102 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
           }
           break;
         }
+        case "match_files": {
+          const file1Column = step.config.file1Column as string;
+          const file2Column = step.config.file2Column as string;
+          const file2Slot = Object.keys(fileDataBySlot).find(slot => 
+            fileDataBySlot[slot].headers.includes(file2Column)
+          );
+          
+          if (file1Column && file2Column && file2Slot) {
+            const file2Data = fileDataBySlot[file2Slot];
+            const idx1 = headers.indexOf(file1Column);
+            const idx2 = file2Data.headers.indexOf(file2Column);
+            
+            if (idx1 !== -1 && idx2 !== -1) {
+              const newHeadersFromFile2 = file2Data.headers.filter(h => !headers.includes(h));
+              headers = [...headers, ...newHeadersFromFile2];
+              
+              const file2Map = new Map<string, string[]>();
+              file2Data.rows.forEach(row => {
+                const key = row[idx2] || "";
+                if (!file2Map.has(key)) {
+                  file2Map.set(key, row);
+                }
+              });
+              
+              rows = rows.map(row => {
+                const key = row[idx1] || "";
+                const matchedRow = file2Map.get(key);
+                if (matchedRow) {
+                  const additionalValues = file2Data.headers
+                    .filter(h => !uploadedFiles[0].headers.includes(h))
+                    .map((h, i) => {
+                      const origIdx = file2Data.headers.indexOf(h);
+                      return matchedRow[origIdx] || "";
+                    });
+                  return [...row, ...additionalValues];
+                }
+                return [...row, ...new Array(newHeadersFromFile2.length).fill("")];
+              });
+            }
+          }
+          break;
+        }
+        case "conditional": {
+          const sourceColumn = step.config.sourceColumn as string;
+          const condition = step.config.condition as string;
+          const searchValue = step.config.searchValue as string || "";
+          const targetType = step.config.targetType as string;
+          const targetColumn = step.config.targetColumn as string;
+          const thenValue = step.config.thenValue as string || "";
+          const elseValue = step.config.elseValue as string || "";
+          
+          const sourceIdx = headers.indexOf(sourceColumn);
+          let targetIdx = headers.indexOf(targetColumn);
+          
+          if (sourceIdx !== -1 && targetColumn) {
+            if (targetType === "new" && targetIdx === -1) {
+              headers.push(targetColumn);
+              targetIdx = headers.length - 1;
+              rows = rows.map(row => [...row, ""]);
+            }
+            
+            if (targetIdx !== -1) {
+              rows = rows.map(row => {
+                const newRow = [...row];
+                const sourceValue = row[sourceIdx] || "";
+                let matches = false;
+                
+                switch (condition) {
+                  case "contains": matches = sourceValue.includes(searchValue); break;
+                  case "equals": matches = sourceValue === searchValue; break;
+                  case "not_contains": matches = !sourceValue.includes(searchValue); break;
+                  case "not_equals": matches = sourceValue !== searchValue; break;
+                  case "starts_with": matches = sourceValue.startsWith(searchValue); break;
+                  case "ends_with": matches = sourceValue.endsWith(searchValue); break;
+                  case "is_empty": matches = sourceValue === ""; break;
+                  case "is_not_empty": matches = sourceValue !== ""; break;
+                  default: matches = false;
+                }
+                
+                if (matches) {
+                  newRow[targetIdx] = thenValue;
+                } else if (elseValue) {
+                  newRow[targetIdx] = elseValue;
+                }
+                
+                return newRow;
+              });
+            }
+          }
+          break;
+        }
       }
     }
     
     return { headers, rows };
-  }, [uploadedFiles, transformationSteps]);
+  }, [uploadedFiles, transformationSteps, inputFileSlots]);
 
   const transformedPreview = applyTransformations();
 
@@ -786,24 +929,25 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                           <div className="space-y-2">
                             <p className="text-sm text-muted-foreground">Wählen Sie die zu löschenden Spalten:</p>
                             <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 border rounded-md">
-                              {uniqueHeaders.map((h) => {
+                              {headersWithSource.map((item) => {
                                 const selectedColumns = (step.config.columns as string[]) || 
                                   (step.config.column ? [step.config.column as string] : []);
-                                const isSelected = selectedColumns.includes(h);
+                                const isSelected = selectedColumns.includes(item.header);
                                 return (
                                   <Badge
-                                    key={h}
+                                    key={`${item.slotName}-${item.header}`}
                                     variant={isSelected ? "default" : "outline"}
                                     className="cursor-pointer"
                                     onClick={() => {
                                       const newColumns = isSelected
-                                        ? selectedColumns.filter(c => c !== h)
-                                        : [...selectedColumns, h];
+                                        ? selectedColumns.filter(c => c !== item.header)
+                                        : [...selectedColumns, item.header];
                                       updateStepConfig(step.id, { columns: newColumns, column: undefined });
                                     }}
-                                    data-testid={`toggle-column-${h}`}
+                                    data-testid={`toggle-column-${item.header}`}
                                   >
-                                    {h}
+                                    <span className="text-xs text-muted-foreground mr-1">[{item.slotName}]</span>
+                                    {item.header}
                                     {isSelected && <Check className="ml-1 h-3 w-3" />}
                                   </Badge>
                                 );
@@ -844,9 +988,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                                 <SelectValue placeholder="Alte Spalte" />
                               </SelectTrigger>
                               <SelectContent>
-                                {uniqueHeaders.map((h) => (
-                                  <SelectItem key={h} value={h}>{h}</SelectItem>
-                                ))}
+                                {renderGroupedColumnOptions()}
                               </SelectContent>
                             </Select>
                             <span className="text-muted-foreground">→</span>
@@ -870,9 +1012,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                                   <SelectValue placeholder="Spalte 1" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {uniqueHeaders.map((h) => (
-                                    <SelectItem key={h} value={h}>{h}</SelectItem>
-                                  ))}
+                                  {renderGroupedColumnOptions()}
                                 </SelectContent>
                               </Select>
                               <Input
@@ -889,9 +1029,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                                   <SelectValue placeholder="Spalte 2" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {uniqueHeaders.map((h) => (
-                                    <SelectItem key={h} value={h}>{h}</SelectItem>
-                                  ))}
+                                  {renderGroupedColumnOptions()}
                                 </SelectContent>
                               </Select>
                             </div>
@@ -915,9 +1053,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                                   <SelectValue placeholder="Spalte" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {uniqueHeaders.map((h) => (
-                                    <SelectItem key={h} value={h}>{h}</SelectItem>
-                                  ))}
+                                  {renderGroupedColumnOptions()}
                                 </SelectContent>
                               </Select>
                               <Input
@@ -940,9 +1076,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                                 <SelectValue placeholder="Spalte" />
                               </SelectTrigger>
                               <SelectContent>
-                                {uniqueHeaders.map((h) => (
-                                  <SelectItem key={h} value={h}>{h}</SelectItem>
-                                ))}
+                                {renderGroupedColumnOptions()}
                               </SelectContent>
                             </Select>
                             <Input
@@ -965,9 +1099,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                                   <SelectValue placeholder="Spalte Datei 1" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {uniqueHeaders.map((h) => (
-                                    <SelectItem key={h} value={h}>{h}</SelectItem>
-                                  ))}
+                                  {renderGroupedColumnOptions()}
                                 </SelectContent>
                               </Select>
                               <span className="text-muted-foreground flex items-center">=</span>
@@ -979,9 +1111,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                                   <SelectValue placeholder="Spalte Datei 2" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {uniqueHeaders.map((h) => (
-                                    <SelectItem key={h} value={h}>{h}</SelectItem>
-                                  ))}
+                                  {renderGroupedColumnOptions()}
                                 </SelectContent>
                               </Select>
                             </div>
@@ -998,9 +1128,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                                 <SelectValue placeholder="Spalte" />
                               </SelectTrigger>
                               <SelectContent>
-                                {uniqueHeaders.map((h) => (
-                                  <SelectItem key={h} value={h}>{h}</SelectItem>
-                                ))}
+                                {renderGroupedColumnOptions()}
                               </SelectContent>
                             </Select>
                             <Select
@@ -1038,9 +1166,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                                   <SelectValue placeholder="Spalte wählen" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {uniqueHeaders.map((h) => (
-                                    <SelectItem key={h} value={h}>{h}</SelectItem>
-                                  ))}
+                                  {renderGroupedColumnOptions()}
                                 </SelectContent>
                               </Select>
                               <Select
@@ -1100,9 +1226,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                                     <SelectValue placeholder="Zielspalte" />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {uniqueHeaders.map((h) => (
-                                      <SelectItem key={h} value={h}>{h}</SelectItem>
-                                    ))}
+                                    {renderGroupedColumnOptions()}
                                   </SelectContent>
                                 </Select>
                               )}
