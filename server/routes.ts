@@ -504,10 +504,11 @@ export async function registerRoutes(
             const fileName = fileInfo.fileName || fileInfo.name || 'file.csv';
             const objectName = `${envPrivateDir.replace(/^\/[^\/]+\//, '')}/executions/${execution.id}/${fileName}`;
             
-            if (fileInfo.data) {
-              const csvContent = typeof fileInfo.data === 'string' 
-                ? fileInfo.data 
-                : JSON.stringify(fileInfo.data);
+            const fileContent = fileInfo.data || fileInfo.content;
+            if (fileContent) {
+              const csvContent = typeof fileContent === 'string' 
+                ? fileContent 
+                : JSON.stringify(fileContent);
               
               const bucket = objectStorageClient.bucket(bucketName);
               const file = bucket.file(objectName);
