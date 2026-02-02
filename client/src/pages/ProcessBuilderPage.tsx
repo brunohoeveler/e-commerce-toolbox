@@ -136,6 +136,12 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       }
       
       setTransformationSteps((existingProcess.transformationSteps as TransformationStep[]) || []);
+      
+      const savedMetadata = existingProcess.sampleFileMetadata as UploadedFile[];
+      if (savedMetadata && savedMetadata.length > 0) {
+        setUploadedFiles(savedMetadata);
+      }
+      
       setIsInitialized(true);
     }
   }, [existingProcess, isInitialized]);
@@ -179,6 +185,13 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const sampleFileMetadata = uploadedFiles.map(file => ({
+        name: file.name,
+        headers: file.headers,
+        preview: file.preview,
+        totalRows: file.totalRows,
+      }));
+      
       if (isEditMode) {
         return apiRequest("PATCH", `/api/processes/${processId}`, {
           name: processName,
@@ -187,6 +200,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
           inputFileCount: inputFileSlots.length,
           inputFileSlots,
           transformationSteps,
+          sampleFileMetadata,
         });
       }
       return apiRequest("POST", "/api/processes", {
@@ -197,6 +211,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
         inputFileCount: inputFileSlots.length,
         inputFileSlots,
         transformationSteps,
+        sampleFileMetadata,
       });
     },
     onSuccess: () => {
