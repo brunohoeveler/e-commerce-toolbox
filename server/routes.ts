@@ -255,11 +255,15 @@ export async function registerRoutes(
   app.post("/api/processes", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+      console.log("POST /api/processes - req.body:", JSON.stringify(req.body, null, 2));
+      console.log("POST /api/processes - transformationSteps:", JSON.stringify(req.body.transformationSteps, null, 2));
       const data = insertProcessSchema.parse(req.body);
+      console.log("POST /api/processes - parsed data:", JSON.stringify(data, null, 2));
       
       if (!(await requireMandantAccess(req, res, data.mandantId))) return;
       
       const process = await storage.createProcess(data);
+      console.log("POST /api/processes - saved process:", JSON.stringify(process, null, 2));
       res.status(201).json(process);
     } catch (error) {
       console.error("Error creating process:", error);
@@ -273,6 +277,8 @@ export async function registerRoutes(
   app.patch("/api/processes/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+      console.log("PATCH /api/processes - req.body:", JSON.stringify(req.body, null, 2));
+      console.log("PATCH /api/processes - transformationSteps:", JSON.stringify(req.body.transformationSteps, null, 2));
       const existingProcess = await storage.getProcess(req.params.id);
       
       if (!existingProcess) {
@@ -282,6 +288,7 @@ export async function registerRoutes(
       if (!(await requireMandantAccess(req, res, existingProcess.mandantId))) return;
       
       const data = insertProcessSchema.partial().parse(req.body);
+      console.log("PATCH /api/processes - parsed data:", JSON.stringify(data, null, 2));
       const process = await storage.updateProcess(req.params.id, data);
       res.json(process);
     } catch (error) {
