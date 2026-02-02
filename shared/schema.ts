@@ -5,7 +5,7 @@ import { z } from "zod";
 
 export * from "./models/auth";
 
-export const userRoleEnum = pgEnum("user_role", ["internal", "external"]);
+export const userRoleEnum = pgEnum("user_role", ["internal", "external", "admin"]);
 
 export const userProfiles = pgTable("user_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

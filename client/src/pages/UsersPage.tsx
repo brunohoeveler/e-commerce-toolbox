@@ -38,7 +38,7 @@ export function UsersPage() {
   });
 
   const updateRoleMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: "internal" | "external" }) => {
+    mutationFn: async ({ userId, role }: { userId: string; role: "internal" | "external" | "admin" }) => {
       return apiRequest("PATCH", `/api/users/${userId}/role`, { role });
     },
     onSuccess: () => {
@@ -72,11 +72,26 @@ export function UsersPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Administratoren</CardTitle>
+            <ShieldCheck className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {users?.filter(u => u.profile?.role === "admin").length || 0}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Vollzugriff und Benutzerverwaltung
+            </p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Interne Benutzer</CardTitle>
-            <ShieldCheck className="h-4 w-4 text-primary" />
+            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -171,7 +186,7 @@ export function UsersPage() {
                         onValueChange={(role) =>
                           updateRoleMutation.mutate({
                             userId: user.id,
-                            role: role as "internal" | "external",
+                            role: role as "internal" | "external" | "admin",
                           })
                         }
                       >
@@ -179,6 +194,12 @@ export function UsersPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="admin">
+                            <div className="flex items-center gap-2">
+                              <ShieldCheck className="h-3 w-3 text-primary" />
+                              Admin
+                            </div>
+                          </SelectItem>
                           <SelectItem value="internal">
                             <div className="flex items-center gap-2">
                               <ShieldCheck className="h-3 w-3" />
