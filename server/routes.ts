@@ -693,6 +693,66 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/process-executions/:id/result", isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { delimiter = 'semicolon' } = req.query;
+      
+      const execution = await storage.getProcessExecution(id);
+      if (!execution) {
+        return res.status(404).json({ message: "Execution not found" });
+      }
+      
+      const process = await storage.getProcess(execution.processId);
+      if (!process) {
+        return res.status(404).json({ message: "Process not found" });
+      }
+      
+      if (!(await requireMandantAccess(req, res, process.mandantId))) return;
+      
+      const outputData = execution.outputData as { columns?: string[]; transactions?: Record<string, any>[] } | null;
+      
+      if (!outputData || !outputData.columns || !outputData.transactions) {
+        return res.status(404).json({ message: "No transformation result available" });
+      }
+      
+      const delimiterMap: Record<string, string> = {
+        'comma': ',',
+        'semicolon': ';',
+        'tab': '\t'
+      };
+      const actualDelimiter = delimiterMap[delimiter as string] || ';';
+      
+      const columns = outputData.columns;
+      const transactions = outputData.transactions;
+      
+      const escapeField = (value: any): string => {
+        const str = value?.toString() || '';
+        if (str.includes(actualDelimiter) || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+      
+      const headerLine = columns.map(escapeField).join(actualDelimiter);
+      const dataLines = transactions.map(row => 
+        columns.map(col => escapeField(row[col])).join(actualDelimiter)
+      );
+      
+      const csvContent = [headerLine, ...dataLines].join('\n');
+      
+      const fileName = `${process.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${execution.month}_${execution.year}_result.csv`;
+      
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.send('\ufeff' + csvContent);
+      
+    } catch (error) {
+      console.error("Error downloading result:", error);
+      res.status(500).json({ message: "Failed to download result" });
+    }
+  });
+
   app.get("/api/financial-summary", isAuthenticated, async (req: any, res) => {
     try {
       const { mandantId, month, year } = req.query;

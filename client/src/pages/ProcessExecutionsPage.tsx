@@ -45,6 +45,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { ProcessExecution, Process } from "@shared/schema";
 
 interface ProcessExecutionsPageProps {
@@ -183,6 +189,8 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
             const isExpanded = expandedId === execution.id;
             const inputFiles = execution.inputFiles as { slotId: string; fileName?: string; type?: string; amount?: number }[] || [];
             const attachments = (execution as any).attachments as { slotId: string; fileName: string; storagePath: string }[] || [];
+            const outputData = execution.outputData as { columns?: string[]; transactions?: Record<string, any>[] } | null;
+            const hasResult = outputData && Array.isArray(outputData.transactions) && outputData.transactions.length > 0;
             
             return (
               <Collapsible
@@ -239,68 +247,115 @@ export function ProcessExecutionsPage({ mandantId }: ProcessExecutionsPageProps)
                   <CollapsibleContent>
                     <CardContent className="pt-0 space-y-4">
                       <div className="grid gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                          <h4 className="font-medium text-sm text-muted-foreground flex items-center gap-2">
-                            <Paperclip className="h-4 w-4" />
-                            Verwendete Dateien
-                          </h4>
-                          {attachments.length > 0 ? (
-                            <div className="space-y-1">
-                              {attachments.map((file, index) => (
-                                <button 
-                                  key={index} 
-                                  className="flex items-center justify-between gap-2 text-sm p-2 rounded-md bg-muted/50 w-full hover-elevate cursor-pointer text-left"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDownloadAttachment(execution.id, file.fileName);
-                                  }}
-                                  data-testid={`button-download-attachment-${index}`}
-                                >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                    <span className="truncate text-primary underline">{file.fileName}</span>
-                                  </div>
-                                  <Download className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                </button>
-                              ))}
-                            </div>
-                          ) : inputFiles.length > 0 ? (
-                            <div className="space-y-1">
-                              {inputFiles.map((file, index) => {
-                                const hasAttachment = attachments.some(a => a.fileName === file.fileName);
-                                return (
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <h4 className="font-medium text-sm text-muted-foreground flex items-center gap-2">
+                              <FileText className="h-4 w-4" />
+                              Transformationsergebnis
+                            </h4>
+                            {execution.status === "completed" && hasResult ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button 
+                                    className="flex items-center justify-between gap-2 text-sm p-2 rounded-md bg-primary/10 w-full hover-elevate cursor-pointer text-left border border-primary/20"
+                                    onClick={(e) => e.stopPropagation()}
+                                    data-testid={`button-download-result-${execution.id}`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <FileText className="h-4 w-4 text-primary flex-shrink-0" />
+                                      <span className="truncate font-medium">Ergebnis-Datei (CSV)</span>
+                                    </div>
+                                    <Download className="h-4 w-4 text-primary flex-shrink-0" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+                                  <DropdownMenuItem 
+                                    onClick={() => window.open(`/api/process-executions/${execution.id}/result?delimiter=semicolon`, '_blank')}
+                                    data-testid={`download-semicolon-${execution.id}`}
+                                  >
+                                    Semikolon-getrennt (;)
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => window.open(`/api/process-executions/${execution.id}/result?delimiter=comma`, '_blank')}
+                                    data-testid={`download-comma-${execution.id}`}
+                                  >
+                                    Komma-getrennt (,)
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => window.open(`/api/process-executions/${execution.id}/result?delimiter=tab`, '_blank')}
+                                    data-testid={`download-tab-${execution.id}`}
+                                  >
+                                    Tab-getrennt
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">Kein Ergebnis verfügbar</p>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            <h4 className="font-medium text-sm text-muted-foreground flex items-center gap-2">
+                              <Paperclip className="h-4 w-4" />
+                              Original-Dateien
+                            </h4>
+                            {attachments.length > 0 ? (
+                              <div className="space-y-1">
+                                {attachments.map((file, index) => (
                                   <button 
                                     key={index} 
-                                    className={`flex items-center gap-2 text-sm p-2 rounded-md bg-muted/50 w-full text-left ${hasAttachment ? 'hover-elevate cursor-pointer' : ''}`}
+                                    className="flex items-center justify-between gap-2 text-sm p-2 rounded-md bg-muted/50 w-full hover-elevate cursor-pointer text-left"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      if (file.fileName) {
-                                        handleDownloadAttachment(execution.id, file.fileName);
-                                      }
+                                      handleDownloadAttachment(execution.id, file.fileName);
                                     }}
-                                    disabled={!file.fileName}
-                                    data-testid={`button-download-inputfile-${index}`}
+                                    data-testid={`button-download-attachment-${index}`}
                                   >
-                                    <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                    {file.fileName ? (
-                                      <>
-                                        <span className="truncate text-primary underline">{file.fileName}</span>
-                                        <Download className="h-4 w-4 text-muted-foreground flex-shrink-0 ml-auto" />
-                                      </>
-                                    ) : file.type === 'manual' ? (
-                                      <span className="truncate">
-                                        Manuelle Eingabe: {typeof file.amount === 'number' ? file.amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : file.amount}
-                                      </span>
-                                    ) : (
-                                      <span className="truncate text-muted-foreground">Keine Datei</span>
-                                    )}
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                      <span className="truncate text-primary underline">{file.fileName}</span>
+                                    </div>
+                                    <Download className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                                   </button>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">Keine Dateien</p>
-                          )}
+                                ))}
+                              </div>
+                            ) : inputFiles.length > 0 ? (
+                              <div className="space-y-1">
+                                {inputFiles.map((file, index) => {
+                                  const hasAttachment = attachments.some(a => a.fileName === file.fileName);
+                                  return (
+                                    <button 
+                                      key={index} 
+                                      className={`flex items-center gap-2 text-sm p-2 rounded-md bg-muted/50 w-full text-left ${hasAttachment ? 'hover-elevate cursor-pointer' : ''}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (file.fileName) {
+                                          handleDownloadAttachment(execution.id, file.fileName);
+                                        }
+                                      }}
+                                      disabled={!file.fileName}
+                                      data-testid={`button-download-inputfile-${index}`}
+                                    >
+                                      <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                      {file.fileName ? (
+                                        <>
+                                          <span className="truncate text-primary underline">{file.fileName}</span>
+                                          <Download className="h-4 w-4 text-muted-foreground flex-shrink-0 ml-auto" />
+                                        </>
+                                      ) : file.type === 'manual' ? (
+                                        <span className="truncate">
+                                          Manuelle Eingabe: {typeof file.amount === 'number' ? file.amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) : file.amount}
+                                        </span>
+                                      ) : (
+                                        <span className="truncate text-muted-foreground">Keine Datei</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">Keine Dateien</p>
+                            )}
+                          </div>
                         </div>
 
                         <div className="space-y-2">
