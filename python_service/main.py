@@ -172,6 +172,141 @@ def apply_transformation(df: pl.DataFrame, step: dict, all_dataframes: dict) -> 
                 if target_column in target_df.columns:
                     df = df.join(target_df, left_on=source_column, right_on=target_column, how='left')
     
+    elif step_type == 'replace_text':
+        column = config.get('column', '')
+        search_text = config.get('searchText', '')
+        replace_text = config.get('replaceText', '')
+        if column and search_text and column in df.columns:
+            df = df.with_columns(
+                pl.col(column).cast(pl.Utf8).str.replace_all(search_text, replace_text).alias(column)
+            )
+    
+    elif step_type == 'extract_substring':
+        column = config.get('column', '')
+        start_pos = int(config.get('startPos', 0) or 0)
+        length = int(config.get('length', 0) or 0)
+        if column and column in df.columns:
+            if length > 0:
+                df = df.with_columns(
+                    pl.col(column).cast(pl.Utf8).str.slice(start_pos, length).alias(column)
+                )
+            else:
+                df = df.with_columns(
+                    pl.col(column).cast(pl.Utf8).str.slice(start_pos).alias(column)
+                )
+    
+    elif step_type == 'select_columns':
+        columns = config.get('columns', [])
+        if columns:
+            existing_cols = [c for c in columns if c in df.columns]
+            if existing_cols:
+                df = df.select(existing_cols)
+    
+    elif step_type == 'remove_duplicates':
+        column = config.get('column', '')
+        if column and column in df.columns:
+            df = df.unique(subset=[column], maintain_order=True)
+    
+    elif step_type == 'sort_rows':
+        column = config.get('column', '')
+        direction = config.get('direction', 'asc')
+        if column and column in df.columns:
+            descending = direction == 'desc'
+            df = df.sort(column, descending=descending)
+    
+    elif step_type == 'concat_files':
+        file2_slot = config.get('file2Slot', '')
+        if file2_slot and file2_slot in all_dataframes:
+            file2_df = all_dataframes[file2_slot]
+            common_cols = [c for c in df.columns if c in file2_df.columns]
+            if common_cols:
+                df2_aligned = file2_df.select(common_cols)
+                df = pl.concat([df.select(common_cols), df2_aligned])
+    
+    elif step_type == 'calculate':
+        column1 = config.get('column1', '')
+        operator = config.get('operator', 'add')
+        column2 = config.get('column2', '')
+        value = config.get('value', '')
+        result_column = config.get('resultColumn', '')
+        
+        if column1 and result_column and column1 in df.columns:
+            col1_expr = pl.col(column1).cast(pl.Utf8).str.replace_all(',', '.').cast(pl.Float64, strict=False).fill_null(0)
+            
+            if operator == 'abs':
+                result_expr = col1_expr.abs()
+            elif column2 and column2 in df.columns:
+                col2_expr = pl.col(column2).cast(pl.Utf8).str.replace_all(',', '.').cast(pl.Float64, strict=False).fill_null(0)
+                if operator == 'add':
+                    result_expr = col1_expr + col2_expr
+                elif operator == 'subtract':
+                    result_expr = col1_expr - col2_expr
+                elif operator == 'multiply':
+                    result_expr = col1_expr * col2_expr
+                elif operator == 'divide':
+                    result_expr = pl.when(col2_expr != 0).then(col1_expr / col2_expr).otherwise(0)
+                else:
+                    result_expr = col1_expr
+            elif value:
+                try:
+                    num_value = float(value.replace(',', '.'))
+                    if operator == 'add':
+                        result_expr = col1_expr + num_value
+                    elif operator == 'subtract':
+                        result_expr = col1_expr - num_value
+                    elif operator == 'multiply':
+                        result_expr = col1_expr * num_value
+                    elif operator == 'divide':
+                        result_expr = col1_expr / num_value if num_value != 0 else pl.lit(0)
+                    else:
+                        result_expr = col1_expr
+                except:
+                    result_expr = col1_expr
+            else:
+                result_expr = col1_expr
+            
+            df = df.with_columns(result_expr.round(2).cast(pl.Utf8).str.replace_all(r'\.', ',').alias(result_column))
+    
+    elif step_type == 'debit_credit':
+        amount_column = config.get('amountColumn', '')
+        target_column = config.get('targetColumn', 'SH')
+        debit_value = config.get('debitValue', 'S')
+        credit_value = config.get('creditValue', 'H')
+        
+        if amount_column and target_column and amount_column in df.columns:
+            amount_expr = pl.col(amount_column).cast(pl.Utf8).str.replace_all(',', '.').cast(pl.Float64, strict=False).fill_null(0)
+            result_expr = pl.when(amount_expr >= 0).then(pl.lit(debit_value)).otherwise(pl.lit(credit_value))
+            df = df.with_columns(result_expr.alias(target_column))
+    
+    elif step_type == 'format_number':
+        column = config.get('column', '')
+        decimal_separator = config.get('decimalSeparator', ',')
+        decimals = int(config.get('decimals', 2) or 2)
+        remove_sign = config.get('removeSign', False)
+        
+        if column and column in df.columns:
+            num_expr = pl.col(column).cast(pl.Utf8).str.replace_all(',', '.').cast(pl.Float64, strict=False).fill_null(0)
+            if remove_sign:
+                num_expr = num_expr.abs()
+            result_expr = num_expr.round(decimals).cast(pl.Utf8)
+            if decimal_separator == ',':
+                result_expr = result_expr.str.replace_all(r'\.', ',')
+            df = df.with_columns(result_expr.alias(column))
+    
+    elif step_type == 'format_date':
+        column = config.get('column', '')
+        output_format = config.get('outputFormat', 'DDMM')
+        
+        if column and column in df.columns:
+            cleaned = pl.col(column).cast(pl.Utf8).str.replace_all(r'\.', '').str.replace_all(r'\-', '').str.replace_all(r'\/', '')
+            if output_format == 'DDMM':
+                result_expr = cleaned.str.slice(0, 4)
+            elif output_format == 'DDMMYYYY':
+                result_expr = cleaned.str.slice(0, 8)
+            else:
+                result_expr = cleaned
+            df = df.with_columns(result_expr.alias(column))
+    
     return df
 
 @app.post("/transform")

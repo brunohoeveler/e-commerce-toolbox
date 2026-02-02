@@ -17,6 +17,14 @@ import {
   Save,
   Check,
   GitBranch,
+  Replace,
+  Scissors,
+  ArrowUpDown,
+  Copy,
+  Calculator,
+  Hash,
+  ListFilter,
+  Layers,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -53,15 +61,25 @@ interface ProcessBuilderPageProps {
 }
 
 const TRANSFORMATION_TYPES = [
-  { type: "remove_column", label: "Spalte entfernen", icon: Trash2, color: "bg-destructive/10 text-destructive" },
-  { type: "add_column", label: "Spalte hinzufügen", icon: Plus, color: "bg-chart-2/10 text-chart-2" },
-  { type: "rename_column", label: "Spalte umbenennen", icon: Type, color: "bg-primary/10 text-primary" },
-  { type: "merge_columns", label: "Spalten zusammenführen", icon: Merge, color: "bg-chart-4/10 text-chart-4" },
-  { type: "split_column", label: "Spalte aufteilen", icon: Split, color: "bg-chart-3/10 text-chart-3" },
-  { type: "remove_string", label: "Text entfernen", icon: Type, color: "bg-chart-5/10 text-chart-5" },
-  { type: "match_files", label: "Dateien matchen", icon: Link2, color: "bg-accent text-accent-foreground" },
-  { type: "filter_rows", label: "Zeilen filtern", icon: Filter, color: "bg-muted text-muted-foreground" },
-  { type: "conditional", label: "Wenn-Dann-Sonst", icon: GitBranch, color: "bg-chart-1/10 text-chart-1" },
+  { type: "remove_column", label: "Spalte entfernen", icon: Trash2, color: "bg-destructive/10 text-destructive", category: "columns" },
+  { type: "add_column", label: "Spalte hinzufügen", icon: Plus, color: "bg-chart-2/10 text-chart-2", category: "columns" },
+  { type: "rename_column", label: "Spalte umbenennen", icon: Type, color: "bg-primary/10 text-primary", category: "columns" },
+  { type: "select_columns", label: "Spalten auswählen", icon: ListFilter, color: "bg-chart-4/10 text-chart-4", category: "columns" },
+  { type: "merge_columns", label: "Spalten zusammenführen", icon: Merge, color: "bg-chart-4/10 text-chart-4", category: "columns" },
+  { type: "split_column", label: "Spalte aufteilen", icon: Split, color: "bg-chart-3/10 text-chart-3", category: "columns" },
+  { type: "replace_text", label: "Text ersetzen", icon: Replace, color: "bg-chart-5/10 text-chart-5", category: "text" },
+  { type: "remove_string", label: "Text entfernen", icon: Type, color: "bg-chart-5/10 text-chart-5", category: "text" },
+  { type: "extract_substring", label: "Text extrahieren", icon: Scissors, color: "bg-chart-3/10 text-chart-3", category: "text" },
+  { type: "filter_rows", label: "Zeilen filtern", icon: Filter, color: "bg-muted text-muted-foreground", category: "rows" },
+  { type: "remove_duplicates", label: "Duplikate entfernen", icon: Copy, color: "bg-chart-1/10 text-chart-1", category: "rows" },
+  { type: "sort_rows", label: "Zeilen sortieren", icon: ArrowUpDown, color: "bg-primary/10 text-primary", category: "rows" },
+  { type: "match_files", label: "Dateien matchen", icon: Link2, color: "bg-accent text-accent-foreground", category: "files" },
+  { type: "concat_files", label: "Dateien zusammenfügen", icon: Layers, color: "bg-chart-2/10 text-chart-2", category: "files" },
+  { type: "conditional", label: "Wenn-Dann-Sonst", icon: GitBranch, color: "bg-chart-1/10 text-chart-1", category: "logic" },
+  { type: "calculate", label: "Berechnung", icon: Calculator, color: "bg-chart-4/10 text-chart-4", category: "logic" },
+  { type: "debit_credit", label: "Soll/Haben", icon: Hash, color: "bg-chart-3/10 text-chart-3", category: "accounting" },
+  { type: "format_number", label: "Zahl formatieren", icon: Hash, color: "bg-chart-5/10 text-chart-5", category: "format" },
+  { type: "format_date", label: "Datum formatieren", icon: Type, color: "bg-primary/10 text-primary", category: "format" },
 ] as const;
 
 interface UploadedFile {
@@ -525,6 +543,190 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                 return newRow;
               });
             }
+          }
+          break;
+        }
+        case "replace_text": {
+          const column = step.config.column as string;
+          const searchText = step.config.searchText as string;
+          const replaceText = step.config.replaceText as string || "";
+          const idx = headers.indexOf(column);
+          if (idx !== -1 && searchText) {
+            rows = rows.map(row => {
+              const newRow = [...row];
+              newRow[idx] = (newRow[idx] || "").replace(new RegExp(searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), replaceText);
+              return newRow;
+            });
+          }
+          break;
+        }
+        case "extract_substring": {
+          const column = step.config.column as string;
+          const startPos = parseInt(step.config.startPos as string) || 0;
+          const length = parseInt(step.config.length as string) || 0;
+          const idx = headers.indexOf(column);
+          if (idx !== -1) {
+            rows = rows.map(row => {
+              const newRow = [...row];
+              const value = newRow[idx] || "";
+              newRow[idx] = length > 0 ? value.substring(startPos, startPos + length) : value.substring(startPos);
+              return newRow;
+            });
+          }
+          break;
+        }
+        case "select_columns": {
+          const selectedCols = (step.config.columns as string[]) || [];
+          if (selectedCols.length > 0) {
+            const indices = selectedCols.map(c => headers.indexOf(c)).filter(i => i !== -1);
+            headers = indices.map(i => headers[i]);
+            rows = rows.map(row => indices.map(i => row[i]));
+          }
+          break;
+        }
+        case "remove_duplicates": {
+          const column = step.config.column as string;
+          const idx = headers.indexOf(column);
+          if (idx !== -1) {
+            const seen = new Set<string>();
+            rows = rows.filter(row => {
+              const value = row[idx] || "";
+              if (seen.has(value)) return false;
+              seen.add(value);
+              return true;
+            });
+          }
+          break;
+        }
+        case "sort_rows": {
+          const column = step.config.column as string;
+          const direction = step.config.direction as string || "asc";
+          const idx = headers.indexOf(column);
+          if (idx !== -1) {
+            rows = [...rows].sort((a, b) => {
+              const valA = a[idx] || "";
+              const valB = b[idx] || "";
+              const numA = parseFloat(valA);
+              const numB = parseFloat(valB);
+              if (!isNaN(numA) && !isNaN(numB)) {
+                return direction === "asc" ? numA - numB : numB - numA;
+              }
+              return direction === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            });
+          }
+          break;
+        }
+        case "concat_files": {
+          const file2Slot = step.config.file2Slot as string;
+          if (file2Slot && fileDataBySlot[file2Slot]) {
+            const file2Data = fileDataBySlot[file2Slot];
+            const file2Rows = file2Data.rows.map(row => {
+              const newRow = headers.map(h => {
+                const idx = file2Data.headers.indexOf(h);
+                return idx !== -1 ? row[idx] : "";
+              });
+              return newRow;
+            });
+            rows = [...rows, ...file2Rows];
+          }
+          break;
+        }
+        case "calculate": {
+          const column1 = step.config.column1 as string;
+          const operator = step.config.operator as string;
+          const column2 = step.config.column2 as string;
+          const resultColumn = step.config.resultColumn as string;
+          const idx1 = headers.indexOf(column1);
+          const idx2 = headers.indexOf(column2);
+          if (idx1 !== -1 && resultColumn) {
+            if (!headers.includes(resultColumn)) {
+              headers.push(resultColumn);
+              rows = rows.map(row => [...row, ""]);
+            }
+            const resultIdx = headers.indexOf(resultColumn);
+            rows = rows.map(row => {
+              const newRow = [...row];
+              const val1 = parseFloat((row[idx1] || "0").replace(",", ".")) || 0;
+              const val2 = idx2 !== -1 ? parseFloat((row[idx2] || "0").replace(",", ".")) || 0 : parseFloat((step.config.value as string) || "0");
+              let result = 0;
+              switch (operator) {
+                case "add": result = val1 + val2; break;
+                case "subtract": result = val1 - val2; break;
+                case "multiply": result = val1 * val2; break;
+                case "divide": result = val2 !== 0 ? val1 / val2 : 0; break;
+                case "abs": result = Math.abs(val1); break;
+              }
+              newRow[resultIdx] = result.toString().replace(".", ",");
+              return newRow;
+            });
+          }
+          break;
+        }
+        case "debit_credit": {
+          const amountColumn = step.config.amountColumn as string;
+          const targetColumn = step.config.targetColumn as string || "SH";
+          const debitValue = step.config.debitValue as string || "S";
+          const creditValue = step.config.creditValue as string || "H";
+          const amountIdx = headers.indexOf(amountColumn);
+          if (amountIdx !== -1 && targetColumn) {
+            if (!headers.includes(targetColumn)) {
+              headers.push(targetColumn);
+              rows = rows.map(row => [...row, ""]);
+            }
+            const targetIdx = headers.indexOf(targetColumn);
+            rows = rows.map(row => {
+              const newRow = [...row];
+              const amount = parseFloat((row[amountIdx] || "0").replace(",", "."));
+              newRow[targetIdx] = amount >= 0 ? debitValue : creditValue;
+              return newRow;
+            });
+          }
+          break;
+        }
+        case "format_number": {
+          const column = step.config.column as string;
+          const decimalSeparator = step.config.decimalSeparator as string || ",";
+          const thousandSeparator = step.config.thousandSeparator as string || "";
+          const decimals = parseInt(step.config.decimals as string) || 2;
+          const removeSign = step.config.removeSign as boolean || false;
+          const idx = headers.indexOf(column);
+          if (idx !== -1) {
+            rows = rows.map(row => {
+              const newRow = [...row];
+              let val = parseFloat((newRow[idx] || "0").replace(",", "."));
+              if (removeSign) val = Math.abs(val);
+              let formatted = val.toFixed(decimals);
+              if (decimalSeparator !== ".") {
+                formatted = formatted.replace(".", decimalSeparator);
+              }
+              if (thousandSeparator) {
+                const parts = formatted.split(decimalSeparator);
+                parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, thousandSeparator);
+                formatted = parts.join(decimalSeparator);
+              }
+              newRow[idx] = formatted;
+              return newRow;
+            });
+          }
+          break;
+        }
+        case "format_date": {
+          const column = step.config.column as string;
+          const outputFormat = step.config.outputFormat as string || "DDMM";
+          const idx = headers.indexOf(column);
+          if (idx !== -1) {
+            rows = rows.map(row => {
+              const newRow = [...row];
+              const value = newRow[idx] || "";
+              let formatted = value.replace(/\./g, "").replace(/\-/g, "").replace(/\//g, "");
+              if (outputFormat === "DDMM") {
+                formatted = formatted.substring(0, 4);
+              } else if (outputFormat === "DDMMYYYY") {
+                formatted = formatted.substring(0, 8);
+              }
+              newRow[idx] = formatted;
+              return newRow;
+            });
           }
           break;
         }
@@ -1248,6 +1450,345 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                               />
                               <span className="text-xs text-muted-foreground">(leer = Wert beibehalten)</span>
                             </div>
+                          </div>
+                        )}
+
+                        {step.type === "replace_text" && (
+                          <div className="flex gap-2 flex-wrap">
+                            <Select
+                              value={(step.config.column as string) || ""}
+                              onValueChange={(v) => updateStepConfig(step.id, { ...step.config, column: v })}
+                            >
+                              <SelectTrigger className="w-40">
+                                <SelectValue placeholder="Spalte" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {renderGroupedColumnOptions()}
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              placeholder="Suchen"
+                              value={(step.config.searchText as string) || ""}
+                              onChange={(e) => updateStepConfig(step.id, { ...step.config, searchText: e.target.value })}
+                              className="w-32"
+                            />
+                            <span className="flex items-center text-muted-foreground">→</span>
+                            <Input
+                              placeholder="Ersetzen"
+                              value={(step.config.replaceText as string) || ""}
+                              onChange={(e) => updateStepConfig(step.id, { ...step.config, replaceText: e.target.value })}
+                              className="w-32"
+                            />
+                          </div>
+                        )}
+
+                        {step.type === "extract_substring" && (
+                          <div className="flex gap-2 flex-wrap items-center">
+                            <Select
+                              value={(step.config.column as string) || ""}
+                              onValueChange={(v) => updateStepConfig(step.id, { ...step.config, column: v })}
+                            >
+                              <SelectTrigger className="w-40">
+                                <SelectValue placeholder="Spalte" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {renderGroupedColumnOptions()}
+                              </SelectContent>
+                            </Select>
+                            <span className="text-sm">von Position</span>
+                            <Input
+                              type="number"
+                              placeholder="0"
+                              value={(step.config.startPos as string) || "0"}
+                              onChange={(e) => updateStepConfig(step.id, { ...step.config, startPos: e.target.value })}
+                              className="w-20"
+                            />
+                            <span className="text-sm">Länge</span>
+                            <Input
+                              type="number"
+                              placeholder="Alle"
+                              value={(step.config.length as string) || ""}
+                              onChange={(e) => updateStepConfig(step.id, { ...step.config, length: e.target.value })}
+                              className="w-20"
+                            />
+                          </div>
+                        )}
+
+                        {step.type === "select_columns" && (
+                          <div className="space-y-2">
+                            <p className="text-sm text-muted-foreground">Wählen Sie die Spalten, die behalten werden sollen:</p>
+                            <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 border rounded-md">
+                              {headersWithSource.map((item) => {
+                                const selectedColumns = (step.config.columns as string[]) || [];
+                                const isSelected = selectedColumns.includes(item.header);
+                                return (
+                                  <Badge
+                                    key={`${item.slotName}-${item.header}`}
+                                    variant={isSelected ? "default" : "outline"}
+                                    className="cursor-pointer"
+                                    onClick={() => {
+                                      const newColumns = isSelected
+                                        ? selectedColumns.filter(c => c !== item.header)
+                                        : [...selectedColumns, item.header];
+                                      updateStepConfig(step.id, { columns: newColumns });
+                                    }}
+                                  >
+                                    <span className="text-xs text-muted-foreground mr-1">[{item.slotName}]</span>
+                                    {item.header}
+                                    {isSelected && <Check className="ml-1 h-3 w-3" />}
+                                  </Badge>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {step.type === "remove_duplicates" && (
+                          <div className="flex gap-2 items-center">
+                            <span className="text-sm">Duplikate entfernen basierend auf</span>
+                            <Select
+                              value={(step.config.column as string) || ""}
+                              onValueChange={(v) => updateStepConfig(step.id, { ...step.config, column: v })}
+                            >
+                              <SelectTrigger className="w-40">
+                                <SelectValue placeholder="Spalte" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {renderGroupedColumnOptions()}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+
+                        {step.type === "sort_rows" && (
+                          <div className="flex gap-2 items-center">
+                            <span className="text-sm">Sortieren nach</span>
+                            <Select
+                              value={(step.config.column as string) || ""}
+                              onValueChange={(v) => updateStepConfig(step.id, { ...step.config, column: v })}
+                            >
+                              <SelectTrigger className="w-40">
+                                <SelectValue placeholder="Spalte" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {renderGroupedColumnOptions()}
+                              </SelectContent>
+                            </Select>
+                            <Select
+                              value={(step.config.direction as string) || "asc"}
+                              onValueChange={(v) => updateStepConfig(step.id, { ...step.config, direction: v })}
+                            >
+                              <SelectTrigger className="w-32">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="asc">Aufsteigend</SelectItem>
+                                <SelectItem value="desc">Absteigend</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+
+                        {step.type === "concat_files" && (
+                          <div className="flex gap-2 items-center">
+                            <span className="text-sm">Datei anhängen:</span>
+                            <Select
+                              value={(step.config.file2Slot as string) || ""}
+                              onValueChange={(v) => updateStepConfig(step.id, { ...step.config, file2Slot: v })}
+                            >
+                              <SelectTrigger className="w-40">
+                                <SelectValue placeholder="Datei wählen" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {inputFileSlots.filter(s => s.inputType !== 'manual').map((slot) => (
+                                  <SelectItem key={slot.id} value={slot.id}>{slot.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+
+                        {step.type === "calculate" && (
+                          <div className="space-y-2">
+                            <div className="flex gap-2 items-center flex-wrap">
+                              <Select
+                                value={(step.config.column1 as string) || ""}
+                                onValueChange={(v) => updateStepConfig(step.id, { ...step.config, column1: v })}
+                              >
+                                <SelectTrigger className="w-40">
+                                  <SelectValue placeholder="Spalte 1" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {renderGroupedColumnOptions()}
+                                </SelectContent>
+                              </Select>
+                              <Select
+                                value={(step.config.operator as string) || "add"}
+                                onValueChange={(v) => updateStepConfig(step.id, { ...step.config, operator: v })}
+                              >
+                                <SelectTrigger className="w-32">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="add">+ Addieren</SelectItem>
+                                  <SelectItem value="subtract">- Subtrahieren</SelectItem>
+                                  <SelectItem value="multiply">× Multiplizieren</SelectItem>
+                                  <SelectItem value="divide">÷ Dividieren</SelectItem>
+                                  <SelectItem value="abs">|x| Absolutwert</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {(step.config.operator as string) !== "abs" && (
+                                <>
+                                  <Select
+                                    value={(step.config.column2 as string) || ""}
+                                    onValueChange={(v) => updateStepConfig(step.id, { ...step.config, column2: v, value: "" })}
+                                  >
+                                    <SelectTrigger className="w-40">
+                                      <SelectValue placeholder="Spalte 2 / Wert" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {renderGroupedColumnOptions()}
+                                    </SelectContent>
+                                  </Select>
+                                  <span className="text-sm text-muted-foreground">oder</span>
+                                  <Input
+                                    type="number"
+                                    placeholder="Fester Wert"
+                                    value={(step.config.value as string) || ""}
+                                    onChange={(e) => updateStepConfig(step.id, { ...step.config, value: e.target.value, column2: "" })}
+                                    className="w-28"
+                                  />
+                                </>
+                              )}
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              <span className="text-sm">Ergebnis in Spalte:</span>
+                              <Input
+                                placeholder="Neue Spalte"
+                                value={(step.config.resultColumn as string) || ""}
+                                onChange={(e) => updateStepConfig(step.id, { ...step.config, resultColumn: e.target.value })}
+                                className="w-40"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {step.type === "debit_credit" && (
+                          <div className="space-y-2">
+                            <div className="flex gap-2 items-center flex-wrap">
+                              <span className="text-sm">Betrag aus</span>
+                              <Select
+                                value={(step.config.amountColumn as string) || ""}
+                                onValueChange={(v) => updateStepConfig(step.id, { ...step.config, amountColumn: v })}
+                              >
+                                <SelectTrigger className="w-40">
+                                  <SelectValue placeholder="Spalte" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {renderGroupedColumnOptions()}
+                                </SelectContent>
+                              </Select>
+                              <span className="text-sm">→ Spalte</span>
+                              <Input
+                                placeholder="SH"
+                                value={(step.config.targetColumn as string) || "SH"}
+                                onChange={(e) => updateStepConfig(step.id, { ...step.config, targetColumn: e.target.value })}
+                                className="w-24"
+                              />
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              <span className="text-sm">Positiv:</span>
+                              <Input
+                                placeholder="S"
+                                value={(step.config.debitValue as string) || "S"}
+                                onChange={(e) => updateStepConfig(step.id, { ...step.config, debitValue: e.target.value })}
+                                className="w-16"
+                              />
+                              <span className="text-sm">Negativ:</span>
+                              <Input
+                                placeholder="H"
+                                value={(step.config.creditValue as string) || "H"}
+                                onChange={(e) => updateStepConfig(step.id, { ...step.config, creditValue: e.target.value })}
+                                className="w-16"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {step.type === "format_number" && (
+                          <div className="space-y-2">
+                            <div className="flex gap-2 items-center flex-wrap">
+                              <Select
+                                value={(step.config.column as string) || ""}
+                                onValueChange={(v) => updateStepConfig(step.id, { ...step.config, column: v })}
+                              >
+                                <SelectTrigger className="w-40">
+                                  <SelectValue placeholder="Spalte" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {renderGroupedColumnOptions()}
+                                </SelectContent>
+                              </Select>
+                              <span className="text-sm">Dezimalzeichen</span>
+                              <Select
+                                value={(step.config.decimalSeparator as string) || ","}
+                                onValueChange={(v) => updateStepConfig(step.id, { ...step.config, decimalSeparator: v })}
+                              >
+                                <SelectTrigger className="w-20">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value=",">,</SelectItem>
+                                  <SelectItem value=".">.</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <span className="text-sm">Dezimalstellen</span>
+                              <Input
+                                type="number"
+                                value={(step.config.decimals as string) || "2"}
+                                onChange={(e) => updateStepConfig(step.id, { ...step.config, decimals: e.target.value })}
+                                className="w-16"
+                              />
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              <label className="flex items-center gap-2 text-sm">
+                                <input
+                                  type="checkbox"
+                                  checked={(step.config.removeSign as boolean) || false}
+                                  onChange={(e) => updateStepConfig(step.id, { ...step.config, removeSign: e.target.checked })}
+                                />
+                                Vorzeichen entfernen (Absolutwert)
+                              </label>
+                            </div>
+                          </div>
+                        )}
+
+                        {step.type === "format_date" && (
+                          <div className="flex gap-2 items-center flex-wrap">
+                            <Select
+                              value={(step.config.column as string) || ""}
+                              onValueChange={(v) => updateStepConfig(step.id, { ...step.config, column: v })}
+                            >
+                              <SelectTrigger className="w-40">
+                                <SelectValue placeholder="Spalte" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {renderGroupedColumnOptions()}
+                              </SelectContent>
+                            </Select>
+                            <span className="text-sm">Ausgabeformat:</span>
+                            <Select
+                              value={(step.config.outputFormat as string) || "DDMM"}
+                              onValueChange={(v) => updateStepConfig(step.id, { ...step.config, outputFormat: v })}
+                            >
+                              <SelectTrigger className="w-32">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="DDMM">TTMM (z.B. 0115)</SelectItem>
+                                <SelectItem value="DDMMYYYY">TTMMJJJJ (z.B. 01152024)</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                         )}
                       </div>
