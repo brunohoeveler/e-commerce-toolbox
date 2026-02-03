@@ -434,36 +434,21 @@ async def execute_python_code(
             'io': io,
         }
         
-        # Load files into the namespace as variables
+        # Load files into the namespace as file paths
+        # We save files to temp directory so user code can use pl.read_csv(data1, ...) etc.
+        temp_files = []
         for i, file in enumerate(files):
             content = await file.read()
             variable_name = mapping.get(str(i), f"data{i+1}")
             
-            # Try to load as DataFrame based on file extension
-            file_ext = file.filename.lower().split('.')[-1] if file.filename else 'csv'
+            # Save to a temp file so user can use pl.read_csv(data1, ...) with their own parameters
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}")
+            temp_file.write(content)
+            temp_file.close()
+            temp_files.append(temp_file.name)
             
-            try:
-                if file_ext == 'csv':
-                    df = pl.read_csv(io.BytesIO(content), infer_schema_length=10000, ignore_errors=True)
-                elif file_ext in ['xlsx', 'xls']:
-                    pdf = pd.read_excel(io.BytesIO(content))
-                    df = pl.from_pandas(pdf)
-                elif file_ext == 'txt':
-                    try:
-                        df = pl.read_csv(io.BytesIO(content), separator='\t', infer_schema_length=10000, ignore_errors=True)
-                    except:
-                        df = pl.read_csv(io.BytesIO(content), separator=';', infer_schema_length=10000, ignore_errors=True)
-                elif file_ext == 'json':
-                    df = pl.read_json(io.BytesIO(content))
-                else:
-                    # Default: try CSV
-                    df = pl.read_csv(io.BytesIO(content), infer_schema_length=10000, ignore_errors=True)
-                
-                namespace[variable_name] = df
-            except Exception as e:
-                # If loading fails, provide the raw content as bytes
-                namespace[variable_name] = content
-                print(f"Warning: Could not load {file.filename} as DataFrame: {e}")
+            # Assign the file path to the variable name
+            namespace[variable_name] = temp_file.name
         
         # Execute the user's Python code
         try:
@@ -537,6 +522,13 @@ async def execute_python_code(
                 "columns": df_result.columns,
                 "success": True
             })
+        
+        # Cleanup temp files
+        for temp_file in temp_files:
+            try:
+                os.unlink(temp_file)
+            except:
+                pass
         
         return JSONResponse({
             "success": True,
