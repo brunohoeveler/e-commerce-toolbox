@@ -2,13 +2,9 @@ import { useLocation, Link } from "wouter";
 import {
   LayoutDashboard,
   Settings,
-  Download,
-  FileText,
-  Plus,
   Building2,
   Users,
   ChevronDown,
-  History,
 } from "lucide-react";
 import ecovisLogo from "@assets/Ecovis_Ball_Berry_1768979574924.jpg";
 import {
@@ -44,26 +40,6 @@ const menuItems = [
     title: "Dashboard",
     url: "/dashboard",
     icon: LayoutDashboard,
-  },
-  {
-    title: "Prozesse",
-    url: "/processes",
-    icon: FileText,
-  },
-  {
-    title: "Neuer Prozess",
-    url: "/processes/new",
-    icon: Plus,
-  },
-  {
-    title: "Ausgeführte Prozesse",
-    url: "/executions",
-    icon: History,
-  },
-  {
-    title: "Exporte",
-    url: "/exports",
-    icon: Download,
   },
   {
     title: "Mandanteninformationen",
@@ -141,7 +117,7 @@ export function AppSidebar({ mandanten, selectedMandant, onSelectMandant }: AppS
             <SidebarMenu>
               {menuItems.map((item) => {
                 const isActive = location === item.url || 
-                  (item.url !== "/" && location.startsWith(item.url) && item.url !== "/processes/new");
+                  (item.url !== "/" && location.startsWith(item.url));
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
