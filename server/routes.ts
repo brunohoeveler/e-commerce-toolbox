@@ -8,10 +8,13 @@ import {
   insertProcessSchema, 
   insertProcessExecutionSchema,
   insertExportRecordSchema,
-  insertMacroSchema
+  insertMacroSchema,
+  type InputFileSlot,
+  type OutputFile
 } from "@shared/schema";
 import { z } from "zod";
-import { callPythonTransform, checkPythonServiceHealth } from "./python-transform";
+import { callPythonTransform, checkPythonServiceHealth, executePythonCode } from "./python-transform";
+import multer from "multer";
 
 interface AuthRequest extends Request {
   user?: {
@@ -320,247 +323,133 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/processes/:id/execute", isAuthenticated, async (req: any, res) => {
+  // Configure multer for file uploads
+  const upload = multer({ storage: multer.memoryStorage() });
+
+  app.post("/api/processes/:id/execute", isAuthenticated, upload.any(), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const process = await storage.getProcess(req.params.id);
+      const processData = await storage.getProcess(req.params.id);
       
-      if (!process) {
+      if (!processData) {
         return res.status(404).json({ message: "Process not found" });
       }
       
-      if (!(await requireMandantAccess(req, res, process.mandantId))) return;
+      if (!(await requireMandantAccess(req, res, processData.mandantId))) return;
 
-      const { month, year, inputFiles, manualEntries } = req.body;
+      // Get uploaded files from multer
+      const uploadedFiles = req.files as Express.Multer.File[];
       
-      let transformedData: TransactionData;
-      let manualTotalAmount = 0;
-      
-      const validatedManualEntries: Array<{ slotId: string; amount: number; attachmentName?: string; attachmentContent?: string }> = [];
-      
-      if (manualEntries && Array.isArray(manualEntries)) {
-        for (const entry of manualEntries) {
-          const amount = typeof entry.amount === 'number' 
-            ? entry.amount 
-            : parseFloat(String(entry.amount || '0').replace(',', '.'));
-          
-          if (!isNaN(amount) && amount !== 0) {
-            validatedManualEntries.push({
-              slotId: entry.slotId || '',
-              amount,
-              attachmentName: entry.attachmentName,
-              attachmentContent: entry.attachmentContent,
-            });
-            manualTotalAmount += amount;
-          }
+      // Parse slot mapping from form data
+      let slotMapping: Record<string, string> = {};
+      if (req.body.slotMapping) {
+        try {
+          slotMapping = JSON.parse(req.body.slotMapping);
+        } catch (e) {
+          console.error("Error parsing slotMapping:", e);
         }
       }
-      
+
+      // Get input file slots and output files from process
+      const inputFileSlots = processData.inputFileSlots as InputFileSlot[] || [];
+      const outputFiles = processData.outputFiles as OutputFile[] || [];
+      const pythonCode = processData.pythonCode || '';
+
+      if (!pythonCode) {
+        return res.status(400).json({ 
+          success: false,
+          error: "Kein Python-Code für diesen Prozess definiert." 
+        });
+      }
+
+      if (!uploadedFiles || uploadedFiles.length === 0) {
+        return res.status(400).json({ 
+          success: false,
+          error: "Keine Dateien hochgeladen." 
+        });
+      }
+
+      // Check Python service health
       const isPythonServiceAvailable = await checkPythonServiceHealth();
-      const hasFileInputs = inputFiles && inputFiles.length > 0;
-      
-      if (hasFileInputs) {
-        if (isPythonServiceAvailable) {
-          try {
-            const objectStorageService = new ObjectStorageService();
-            const filesForPython: Array<{ slotId: string; content: Buffer; filename: string }> = [];
-            
-            for (const fileInfo of inputFiles) {
-              if (fileInfo.objectPath) {
-                const file = await objectStorageService.getObjectEntityFile(fileInfo.objectPath);
-                const [content] = await file.download();
-                filesForPython.push({
-                  slotId: fileInfo.slotId || `file_${filesForPython.length}`,
-                  content: content,
-                  filename: fileInfo.filename || fileInfo.name || 'file.csv',
-                });
-              } else if (fileInfo.content) {
-                filesForPython.push({
-                  slotId: fileInfo.slotId || `file_${filesForPython.length}`,
-                  content: Buffer.from(fileInfo.content, 'utf-8'),
-                  filename: fileInfo.filename || fileInfo.name || 'file.csv',
-                });
-              }
-            }
-            
-            if (filesForPython.length > 0) {
-              const pythonResult = await callPythonTransform(
-                filesForPython,
-                process.transformationSteps as any[] || []
-              );
-              
-              const amountColumn = pythonResult.columns.find((col: string) => 
-                col.toLowerCase().includes('betrag') || 
-                col.toLowerCase().includes('amount') || 
-                col.toLowerCase().includes('summe')
-              );
-              const totalAmount = amountColumn 
-                ? pythonResult.data.reduce((sum: number, t: any) => sum + (parseFloat(t[amountColumn]) || 0), 0)
-                : 0;
-              
-              transformedData = {
-                transactions: pythonResult.data,
-                columns: pythonResult.columns,
-                summary: {
-                  totalAmount,
-                  transactionCount: pythonResult.row_count,
-                },
-              };
-            } else {
-              transformedData = executeTransformationPipeline(inputFiles || [], process.transformationSteps as any[] || []);
-            }
-          } catch (pythonError) {
-            console.error("Python service error, falling back to JS:", pythonError);
-            transformedData = executeTransformationPipeline(inputFiles || [], process.transformationSteps as any[] || []);
-          }
-        } else {
-          transformedData = executeTransformationPipeline(inputFiles || [], process.transformationSteps as any[] || []);
-        }
-      } else {
-        transformedData = {
-          transactions: [],
-          columns: [],
-          summary: {
-            totalAmount: 0,
-            transactionCount: 0,
-          },
-        };
-      }
-      
-      const columns = transformedData.columns || [];
-      const transactions = transformedData.transactions || [];
-      
-      const amountCol = columns.find((col: string) => 
-        col.toLowerCase().includes('betrag') || 
-        col.toLowerCase().includes('amount') || 
-        col.toLowerCase().includes('summe')
-      );
-      
-      const countryCol = columns.find((col: string) => 
-        col.toLowerCase().includes('land') || 
-        col.toLowerCase().includes('country') || 
-        col.toLowerCase().includes('ländercode') ||
-        col.toLowerCase().includes('region')
-      );
-      
-      const fileBasedAmount = amountCol 
-        ? transactions.reduce((sum: number, t: any) => sum + (parseFloat(t[amountCol]) || 0), 0)
-        : (transformedData.summary?.totalAmount || 0);
-      
-      const executionTotalAmount = fileBasedAmount + manualTotalAmount;
-      
-      let countryBreakdown: Record<string, number> | null = null;
-      if (countryCol && amountCol) {
-        countryBreakdown = {};
-        for (const t of transactions) {
-          const country = String(t[countryCol] || 'Unbekannt').trim() || 'Unbekannt';
-          const amount = parseFloat(t[amountCol]) || 0;
-          countryBreakdown[country] = (countryBreakdown[country] || 0) + amount;
-        }
-      }
-      
-      const allInputData = [
-        ...(inputFiles || []).map((f: any) => ({
-          slotId: f.slotId,
-          fileName: f.name || f.fileName,
-          type: 'file',
-        })),
-        ...validatedManualEntries.map((e) => ({
-          slotId: e.slotId,
-          amount: e.amount,
-          fileName: e.attachmentName,
-          type: 'manual',
-        })),
-      ];
-      
-      const fileTransactionCount = transformedData.transactions?.length || 0;
-      const manualEntryCount = validatedManualEntries.length;
-      const finalTransactionCount = fileTransactionCount > 0 ? fileTransactionCount : manualEntryCount;
-      
-      const execution = await storage.createProcessExecution({
-        processId: process.id,
-        mandantId: process.mandantId,
-        status: "completed",
-        month: month || new Date().getMonth() + 1,
-        year: year || new Date().getFullYear(),
-        inputFiles: allInputData,
-        attachments: [],
-        outputData: transformedData,
-        transactionCount: finalTransactionCount,
-        totalAmount: executionTotalAmount.toFixed(2),
-        countryBreakdown: countryBreakdown,
-      });
-      
-      const attachments: { slotId: string; fileName: string; storagePath: string }[] = [];
-      
-      const envPrivateDir = globalThis.process.env.PRIVATE_OBJECT_DIR || '';
-      console.log("PRIVATE_OBJECT_DIR:", envPrivateDir);
-      const bucketMatch = envPrivateDir.match(/^\/([^\/]+)\//);
-      const bucketName = bucketMatch ? bucketMatch[1] : '';
-      console.log("bucketName:", bucketName, "validatedManualEntries:", validatedManualEntries.length);
-      
-      if (bucketName && inputFiles && Array.isArray(inputFiles)) {
-        for (const fileInfo of inputFiles) {
-          try {
-            const fileName = fileInfo.fileName || fileInfo.name || 'file.csv';
-            const objectName = `${envPrivateDir.replace(/^\/[^\/]+\//, '')}/executions/${execution.id}/${fileName}`;
-            
-            const fileContent = fileInfo.data || fileInfo.content;
-            if (fileContent) {
-              const csvContent = typeof fileContent === 'string' 
-                ? fileContent 
-                : JSON.stringify(fileContent);
-              
-              const bucket = objectStorageClient.bucket(bucketName);
-              const file = bucket.file(objectName);
-              await file.save(Buffer.from(csvContent, 'utf-8'));
-              
-              attachments.push({
-                slotId: fileInfo.slotId || '',
-                fileName,
-                storagePath: `/${bucketName}/${objectName}`,
-              });
-            }
-          } catch (uploadError) {
-            console.error("Error uploading attachment:", uploadError);
-          }
-        }
-      }
-      
-      if (bucketName) {
-        for (const entry of validatedManualEntries) {
-          if (entry.attachmentName && entry.attachmentContent) {
-            try {
-              const fileName = entry.attachmentName;
-              const objectName = `${envPrivateDir.replace(/^\/[^\/]+\//, '')}/executions/${execution.id}/${fileName}`;
-              
-              const base64Data = entry.attachmentContent.split(',')[1] || entry.attachmentContent;
-              const buffer = Buffer.from(base64Data, 'base64');
-              
-              const bucket = objectStorageClient.bucket(bucketName);
-              const file = bucket.file(objectName);
-              await file.save(buffer);
-              
-              attachments.push({
-                slotId: entry.slotId || '',
-                fileName,
-                storagePath: `/${bucketName}/${objectName}`,
-              });
-            } catch (uploadError) {
-              console.error("Error uploading manual attachment:", uploadError);
-            }
-          }
-        }
-      }
-      
-      if (attachments.length > 0) {
-        await storage.updateProcessExecution(execution.id, { attachments } as any);
+      if (!isPythonServiceAvailable) {
+        return res.status(503).json({ 
+          success: false,
+          error: "Python-Service ist nicht verfügbar. Bitte versuchen Sie es später erneut." 
+        });
       }
 
-      res.status(201).json(execution);
-    } catch (error) {
+      // Map uploaded files to their variable names
+      const filesForPython: Array<{ variable: string; content: Buffer; filename: string }> = [];
+      
+      for (const file of uploadedFiles) {
+        // File fieldname is like "file_<slotId>"
+        const slotId = file.fieldname.replace('file_', '');
+        const variableName = slotMapping[slotId] || `data${filesForPython.length + 1}`;
+        
+        filesForPython.push({
+          variable: variableName,
+          content: file.buffer,
+          filename: file.originalname,
+        });
+      }
+
+      console.log("Executing Python code with files:", filesForPython.map(f => ({ var: f.variable, name: f.filename })));
+      console.log("Output files config:", outputFiles);
+
+      // Execute Python code
+      const pythonResult = await executePythonCode(
+        filesForPython,
+        pythonCode,
+        outputFiles.map(of => ({
+          id: of.id,
+          name: of.name,
+          dataFrameVariable: of.dataFrameVariable,
+          format: of.format,
+        }))
+      );
+
+      if (!pythonResult.success) {
+        return res.status(400).json({
+          success: false,
+          error: pythonResult.error || "Fehler bei der Ausführung des Python-Codes.",
+        });
+      }
+
+      // Process outputs and create download URLs
+      const resultOutputs = pythonResult.outputs.map((output) => {
+        if (!output.success) {
+          return {
+            name: output.name,
+            format: output.format,
+            error: output.error,
+            success: false,
+          };
+        }
+
+        // Create a data URL for download
+        const contentType = output.content_type || 'application/octet-stream';
+        const downloadUrl = `data:${contentType};base64,${output.content}`;
+
+        return {
+          name: `${output.name}.${output.format}`,
+          format: output.format,
+          downloadUrl,
+          rowCount: output.row_count,
+          columns: output.columns,
+          success: true,
+        };
+      });
+
+      res.json({
+        success: true,
+        outputs: resultOutputs,
+      });
+    } catch (error: any) {
       console.error("Error executing process:", error);
-      res.status(500).json({ message: "Failed to execute process" });
+      res.status(500).json({ 
+        success: false,
+        error: error.message || "Failed to execute process" 
+      });
     }
   });
 

@@ -11,6 +11,66 @@ interface TransformResult {
   csv_content: string;
 }
 
+interface OutputFileResult {
+  name: string;
+  format: string;
+  content?: string;
+  content_type?: string;
+  row_count?: number;
+  columns?: string[];
+  success: boolean;
+  error?: string;
+}
+
+interface ExecuteCodeResult {
+  success: boolean;
+  outputs: OutputFileResult[];
+  error?: string;
+}
+
+export interface OutputFileConfig {
+  id: string;
+  name: string;
+  dataFrameVariable: string;
+  format: string;
+}
+
+export async function executePythonCode(
+  files: Array<{ variable: string; content: Buffer; filename: string }>,
+  pythonCode: string,
+  outputFiles: OutputFileConfig[]
+): Promise<ExecuteCodeResult> {
+  const formData = new FormData();
+  
+  // Create slot mapping: index -> variable name
+  const slotMapping: Record<string, string> = {};
+  files.forEach((file, index) => {
+    formData.append("files", file.content, {
+      filename: file.filename,
+      contentType: getContentType(file.filename),
+    });
+    slotMapping[String(index)] = file.variable;
+  });
+  
+  formData.append("slot_mapping", JSON.stringify(slotMapping));
+  formData.append("python_code", pythonCode);
+  formData.append("output_files", JSON.stringify(outputFiles));
+  
+  const response = await fetch(`${PYTHON_SERVICE_URL}/execute-code`, {
+    method: "POST",
+    body: formData,
+    headers: formData.getHeaders(),
+  });
+  
+  const result = await response.json() as ExecuteCodeResult;
+  
+  if (!response.ok) {
+    throw new Error(result.error || `Python service error: ${response.status}`);
+  }
+  
+  return result;
+}
+
 export async function callPythonTransform(
   files: Array<{ slotId: string; content: Buffer; filename: string }>,
   transformationSteps: any[]

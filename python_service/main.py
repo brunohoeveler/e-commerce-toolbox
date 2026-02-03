@@ -408,6 +408,155 @@ async def preview_columns(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Preview error: {str(e)}")
 
+@app.post("/execute-code")
+async def execute_python_code(
+    files: List[UploadFile] = File(...),
+    slot_mapping: str = Form(...),
+    python_code: str = Form(...),
+    output_files: str = Form(...)
+):
+    """
+    Execute user-defined Python code with uploaded files as input.
+    
+    - files: List of uploaded files
+    - slot_mapping: JSON string mapping file indices to variable names (e.g., {"0": "data1", "1": "data2"})
+    - python_code: The Python code to execute
+    - output_files: JSON array of output file definitions
+    """
+    try:
+        mapping = json.loads(slot_mapping)
+        outputs = json.loads(output_files)
+        
+        # Create a namespace for code execution
+        namespace = {
+            'pl': pl,
+            'pd': pd,
+            'io': io,
+        }
+        
+        # Load files into the namespace as variables
+        for i, file in enumerate(files):
+            content = await file.read()
+            variable_name = mapping.get(str(i), f"data{i+1}")
+            
+            # Try to load as DataFrame based on file extension
+            file_ext = file.filename.lower().split('.')[-1] if file.filename else 'csv'
+            
+            try:
+                if file_ext == 'csv':
+                    df = pl.read_csv(io.BytesIO(content), infer_schema_length=10000, ignore_errors=True)
+                elif file_ext in ['xlsx', 'xls']:
+                    pdf = pd.read_excel(io.BytesIO(content))
+                    df = pl.from_pandas(pdf)
+                elif file_ext == 'txt':
+                    try:
+                        df = pl.read_csv(io.BytesIO(content), separator='\t', infer_schema_length=10000, ignore_errors=True)
+                    except:
+                        df = pl.read_csv(io.BytesIO(content), separator=';', infer_schema_length=10000, ignore_errors=True)
+                elif file_ext == 'json':
+                    df = pl.read_json(io.BytesIO(content))
+                else:
+                    # Default: try CSV
+                    df = pl.read_csv(io.BytesIO(content), infer_schema_length=10000, ignore_errors=True)
+                
+                namespace[variable_name] = df
+            except Exception as e:
+                # If loading fails, provide the raw content as bytes
+                namespace[variable_name] = content
+                print(f"Warning: Could not load {file.filename} as DataFrame: {e}")
+        
+        # Execute the user's Python code
+        try:
+            exec(python_code, namespace)
+        except Exception as e:
+            return JSONResponse({
+                "success": False,
+                "error": f"Code execution error: {str(e)}",
+                "outputs": []
+            }, status_code=400)
+        
+        # Collect outputs based on output_files configuration
+        result_outputs = []
+        for output_config in outputs:
+            var_name = output_config.get('dataFrameVariable', 'result')
+            output_name = output_config.get('name', 'export')
+            output_format = output_config.get('format', 'csv').lower()
+            
+            if var_name not in namespace:
+                result_outputs.append({
+                    "name": output_name,
+                    "format": output_format,
+                    "error": f"Variable '{var_name}' not found in code output",
+                    "success": False
+                })
+                continue
+            
+            df_result = namespace[var_name]
+            
+            # Convert pandas to polars if needed
+            if isinstance(df_result, pd.DataFrame):
+                df_result = pl.from_pandas(df_result)
+            
+            if not isinstance(df_result, pl.DataFrame):
+                result_outputs.append({
+                    "name": output_name,
+                    "format": output_format,
+                    "error": f"Variable '{var_name}' is not a DataFrame",
+                    "success": False
+                })
+                continue
+            
+            # Generate output in requested format
+            output_buffer = io.BytesIO()
+            
+            if output_format == 'csv':
+                df_result.write_csv(output_buffer)
+                content_type = 'text/csv'
+            elif output_format == 'xlsx':
+                # Convert to pandas for Excel export
+                df_result.to_pandas().to_excel(output_buffer, index=False, engine='openpyxl')
+                content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            elif output_format == 'json':
+                json_str = df_result.write_json()
+                output_buffer.write(json_str.encode('utf-8'))
+                content_type = 'application/json'
+            else:
+                df_result.write_csv(output_buffer)
+                content_type = 'text/csv'
+            
+            output_buffer.seek(0)
+            import base64
+            content_b64 = base64.b64encode(output_buffer.getvalue()).decode('utf-8')
+            
+            result_outputs.append({
+                "name": output_name,
+                "format": output_format,
+                "content": content_b64,
+                "content_type": content_type,
+                "row_count": len(df_result),
+                "columns": df_result.columns,
+                "success": True
+            })
+        
+        return JSONResponse({
+            "success": True,
+            "outputs": result_outputs
+        })
+        
+    except json.JSONDecodeError as e:
+        return JSONResponse({
+            "success": False,
+            "error": f"Invalid JSON: {str(e)}",
+            "outputs": []
+        }, status_code=400)
+    except Exception as e:
+        import traceback
+        return JSONResponse({
+            "success": False,
+            "error": f"Execution error: {str(e)}\n{traceback.format_exc()}",
+            "outputs": []
+        }, status_code=500)
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
