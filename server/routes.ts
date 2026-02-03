@@ -266,6 +266,30 @@ export async function registerRoutes(
       
       if (!(await requireMandantAccess(req, res, data.mandantId))) return;
       
+      // Validate usedMacroIds - only allow valid macro references
+      const usedMacroIds = (data as any).usedMacroIds as string[] || [];
+      if (usedMacroIds.length > 0) {
+        const userProfile = await storage.getUserProfile(userId);
+        const isInternalUser = userProfile?.role === 'internal';
+        
+        // External users cannot reference macros (macros are internal-only)
+        if (!isInternalUser && usedMacroIds.length > 0) {
+          return res.status(403).json({ 
+            message: "Nur interne Benutzer können Macros verwenden" 
+          });
+        }
+        
+        // Validate that all referenced macros exist
+        for (const macroId of usedMacroIds) {
+          const macro = await storage.getMacro(macroId);
+          if (!macro) {
+            return res.status(400).json({ 
+              message: `Macro "${macroId}" nicht gefunden` 
+            });
+          }
+        }
+      }
+      
       const process = await storage.createProcess(data);
       console.log("POST /api/processes - saved process:", JSON.stringify(process, null, 2));
       res.status(201).json(process);
@@ -293,6 +317,31 @@ export async function registerRoutes(
       
       const data = insertProcessSchema.partial().parse(req.body);
       console.log("PATCH /api/processes - parsed data:", JSON.stringify(data, null, 2));
+      
+      // Validate usedMacroIds if being updated
+      const usedMacroIds = (data as any).usedMacroIds as string[] | undefined;
+      if (usedMacroIds && usedMacroIds.length > 0) {
+        const userProfile = await storage.getUserProfile(userId);
+        const isInternalUser = userProfile?.role === 'internal';
+        
+        // External users cannot reference macros (macros are internal-only)
+        if (!isInternalUser) {
+          return res.status(403).json({ 
+            message: "Nur interne Benutzer können Macros verwenden" 
+          });
+        }
+        
+        // Validate that all referenced macros exist
+        for (const macroId of usedMacroIds) {
+          const macro = await storage.getMacro(macroId);
+          if (!macro) {
+            return res.status(400).json({ 
+              message: `Macro "${macroId}" nicht gefunden` 
+            });
+          }
+        }
+      }
+      
       const process = await storage.updateProcess(req.params.id, data);
       res.json(process);
     } catch (error) {
@@ -336,6 +385,20 @@ export async function registerRoutes(
       }
       
       if (!(await requireMandantAccess(req, res, processData.mandantId))) return;
+
+      // Security check: External users cannot execute processes with macros
+      const usedMacroIds = (processData as any).usedMacroIds as string[] || [];
+      if (usedMacroIds.length > 0) {
+        const userProfile = await storage.getUserProfile(userId);
+        const isInternalUser = userProfile?.role === 'internal';
+        
+        if (!isInternalUser) {
+          return res.status(403).json({ 
+            success: false,
+            error: "Dieser Prozess enthält interne Macros und kann nur von internen Benutzern ausgeführt werden." 
+          });
+        }
+      }
 
       // Get uploaded files from multer
       const uploadedFiles = req.files as Express.Multer.File[];
@@ -391,6 +454,69 @@ export async function registerRoutes(
           content: file.buffer,
           filename: file.originalname,
         });
+      }
+
+      // Load pattern files only from macros explicitly referenced in the process
+      // This ensures proper scoping and prevents cross-macro data exposure
+      // Note: usedMacroIds already declared above in security check
+      const patternFileErrors: string[] = [];
+      
+      if (usedMacroIds.length > 0) {
+        try {
+          for (const macroId of usedMacroIds) {
+            const macro = await storage.getMacro(macroId);
+            if (!macro) {
+              console.warn(`Referenced macro ${macroId} not found`);
+              continue;
+            }
+            
+            const patternFiles = (macro.patternFiles as any[] || []);
+            for (const pf of patternFiles) {
+              try {
+                // Extract bucket name and object name from storage path
+                const storagePath = pf.storagePath;
+                const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
+                if (pathMatch) {
+                  const bucketName = pathMatch[1];
+                  const objectName = pathMatch[2];
+                  
+                  // Download file from object storage
+                  const downloadResult = await objectStorageClient.downloadObject(bucketName, objectName);
+                  if (downloadResult.ok) {
+                    const chunks: Uint8Array[] = [];
+                    for await (const chunk of downloadResult.value as unknown as AsyncIterable<Uint8Array>) {
+                      chunks.push(chunk);
+                    }
+                    const content = Buffer.concat(chunks);
+                    
+                    filesForPython.push({
+                      variable: pf.variable,
+                      content: content,
+                      filename: pf.originalFilename || `pattern_${pf.id}`,
+                    });
+                    console.log(`Loaded pattern file from macro "${macro.name}": ${pf.variable} (${pf.originalFilename})`);
+                  } else {
+                    patternFileErrors.push(`Variable "${pf.variable}" konnte nicht geladen werden`);
+                    console.warn(`Failed to download pattern file ${pf.variable}: storage returned error`);
+                  }
+                } else {
+                  patternFileErrors.push(`Ungültiger Speicherpfad für Variable "${pf.variable}"`);
+                  console.warn(`Invalid storage path for pattern file ${pf.variable}: ${storagePath}`);
+                }
+              } catch (patternError) {
+                patternFileErrors.push(`Fehler beim Laden von "${pf.variable}"`);
+                console.error(`Error loading pattern file ${pf.variable}:`, patternError);
+              }
+            }
+          }
+        } catch (macroError) {
+          console.error("Error loading pattern files from macros:", macroError);
+        }
+      }
+      
+      // Warn user about missing pattern files but don't block execution
+      if (patternFileErrors.length > 0) {
+        console.warn("Pattern file warnings:", patternFileErrors);
       }
 
       console.log("Executing Python code with files:", filesForPython.map(f => ({ var: f.variable, name: f.filename })));

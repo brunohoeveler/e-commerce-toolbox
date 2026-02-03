@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Save, Plus, Trash2, ArrowLeft, FileCode } from "lucide-react";
+import { Save, Plus, Trash2, ArrowLeft, FileCode, Puzzle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -16,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { InputFileSlot, OutputFile, Process } from "@shared/schema";
+import type { InputFileSlot, OutputFile, Process, Macro } from "@shared/schema";
 
 interface ProcessBuilderPageProps {
   mandantId: string | null;
@@ -44,6 +45,12 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
 
 `);
   const [outputFiles, setOutputFiles] = useState<OutputFile[]>([]);
+  const [usedMacroIds, setUsedMacroIds] = useState<string[]>([]);
+
+  // Fetch available macros
+  const { data: macros } = useQuery<Macro[]>({
+    queryKey: ["/api/macros"],
+  });
 
   const { data: existingProcess, isLoading: processLoading } = useQuery<Process>({
     queryKey: ["/api/processes", processId],
@@ -64,6 +71,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       setInputFileSlots(existingProcess.inputFileSlots as InputFileSlot[] || []);
       setPythonCode(existingProcess.pythonCode || "");
       setOutputFiles(existingProcess.outputFiles as OutputFile[] || []);
+      setUsedMacroIds((existingProcess as any).usedMacroIds || []);
     }
   }, [existingProcess]);
 
@@ -76,6 +84,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       inputFileSlots: InputFileSlot[];
       pythonCode: string;
       outputFiles: OutputFile[];
+      usedMacroIds: string[];
     }) => {
       if (processId) {
         return apiRequest("PATCH", `/api/processes/${processId}`, data);
@@ -195,7 +204,28 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       inputFileSlots,
       pythonCode,
       outputFiles,
+      usedMacroIds,
     });
+  };
+
+  // Function to insert a macro's code into the editor
+  const insertMacro = (macro: Macro) => {
+    if (!usedMacroIds.includes(macro.id)) {
+      setUsedMacroIds([...usedMacroIds, macro.id]);
+    }
+    setPythonCode(prev => {
+      const macroComment = `\n# Macro: ${macro.name}\n${macro.pythonCode}\n`;
+      return prev + macroComment;
+    });
+    toast({
+      title: "Macro eingefügt",
+      description: `"${macro.name}" wurde zum Code hinzugefügt.`,
+    });
+  };
+
+  // Function to remove a macro from the used list
+  const removeMacro = (macroId: string) => {
+    setUsedMacroIds(usedMacroIds.filter(id => id !== macroId));
   };
 
   if (!mandantId) {
@@ -429,6 +459,64 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
         </div>
 
         <div className="space-y-6">
+          {/* Macros Section */}
+          {macros && macros.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Puzzle className="h-5 w-5" />
+                  Macros
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Fügen Sie wiederverwendbare Code-Bausteine hinzu:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {macros.map(macro => (
+                      <Button
+                        key={macro.id}
+                        variant={usedMacroIds.includes(macro.id) ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => insertMacro(macro)}
+                        data-testid={`button-insert-macro-${macro.id}`}
+                      >
+                        <Puzzle className="h-4 w-4 mr-1" />
+                        {macro.name}
+                      </Button>
+                    ))}
+                  </div>
+                  {usedMacroIds.length > 0 && (
+                    <div className="mt-3 p-3 bg-muted rounded-md">
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Verwendete Macros (Pattern-Dateien werden automatisch geladen):
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {usedMacroIds.map(id => {
+                          const macro = macros.find(m => m.id === id);
+                          return macro ? (
+                            <Badge key={id} variant="secondary" className="gap-1">
+                              {macro.name}
+                              <button
+                                type="button"
+                                onClick={() => removeMacro(id)}
+                                className="ml-1 hover:text-destructive"
+                                data-testid={`button-remove-macro-${id}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ) : null;
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="h-full">
             <CardHeader>
               <CardTitle>Python Code</CardTitle>

@@ -82,6 +82,7 @@ export const processes = pgTable("processes", {
   inputFileSlots: jsonb("input_file_slots").notNull().default([]),
   pythonCode: text("python_code").notNull().default(""),
   outputFiles: jsonb("output_files").notNull().default([]),
+  usedMacroIds: jsonb("used_macro_ids").notNull().default([]),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
