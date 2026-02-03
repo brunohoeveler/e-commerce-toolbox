@@ -493,9 +493,10 @@ async def execute_python_code(
             
             # Generate output in requested format
             output_buffer = io.BytesIO()
+            delimiter = output_config.get('delimiter', ';')
             
             if output_format == 'csv':
-                df_result.write_csv(output_buffer)
+                df_result.write_csv(output_buffer, separator=delimiter)
                 content_type = 'text/csv'
             elif output_format == 'xlsx':
                 # Convert to pandas for Excel export
@@ -506,7 +507,7 @@ async def execute_python_code(
                 output_buffer.write(json_str.encode('utf-8'))
                 content_type = 'application/json'
             else:
-                df_result.write_csv(output_buffer)
+                df_result.write_csv(output_buffer, separator=delimiter)
                 content_type = 'text/csv'
             
             output_buffer.seek(0)

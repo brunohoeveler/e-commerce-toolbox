@@ -357,7 +357,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Dateiname</Label>
                         <Input
@@ -380,12 +380,14 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                           data-testid={`input-output-variable-${index}`}
                         />
                       </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Format</Label>
                         <Select
                           value={file.format}
                           onValueChange={(value: "csv" | "xlsx" | "json") =>
-                            updateOutputFile(file.id, { format: value })
+                            updateOutputFile(file.id, { format: value, delimiter: value === 'csv' ? (file.delimiter || ';') : undefined })
                           }
                         >
                           <SelectTrigger data-testid={`select-output-format-${index}`}>
@@ -398,6 +400,26 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                           </SelectContent>
                         </Select>
                       </div>
+                      {file.format === 'csv' && (
+                        <div className="space-y-2">
+                          <Label>CSV-Trennzeichen</Label>
+                          <Select
+                            value={file.delimiter || ';'}
+                            onValueChange={(value: ',' | ';' | '\t') =>
+                              updateOutputFile(file.id, { delimiter: value })
+                            }
+                          >
+                            <SelectTrigger data-testid={`select-output-delimiter-${index}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value=";">Semikolon (;)</SelectItem>
+                              <SelectItem value=",">Komma (,)</SelectItem>
+                              <SelectItem value={'\t'}>Tab</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))

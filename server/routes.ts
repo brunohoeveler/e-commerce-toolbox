@@ -405,6 +405,7 @@ export async function registerRoutes(
           name: of.name,
           dataFrameVariable: of.dataFrameVariable,
           format: of.format,
+          delimiter: of.delimiter || ';',
         }))
       );
 
