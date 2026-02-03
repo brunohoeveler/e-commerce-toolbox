@@ -60,9 +60,18 @@ export const macros = pgTable("macros", {
   name: text("name").notNull().unique(),
   description: text("description"),
   pythonCode: text("python_code").notNull(),
+  patternFiles: jsonb("pattern_files").notNull().default([]),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+export interface PatternFile {
+  id: string;
+  name: string;
+  variable: string;
+  storagePath: string;
+  originalFilename: string;
+}
 
 export const processes = pgTable("processes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -209,6 +218,7 @@ export interface OutputFile {
   name: string;
   dataFrameVariable: string;
   format: 'csv' | 'xlsx' | 'json';
+  delimiter?: ',' | ';' | '\t';
 }
 
 export interface FilePreview {

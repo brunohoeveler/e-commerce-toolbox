@@ -884,6 +884,125 @@ export async function registerRoutes(
     }
   });
 
+  // Upload pattern file for a macro
+  app.post("/api/macros/:id/pattern-files", isAuthenticated, isInternalOnly, upload.single('file'), async (req: any, res) => {
+    try {
+      const macro = await storage.getMacro(req.params.id);
+      if (!macro) {
+        return res.status(404).json({ message: "Macro not found" });
+      }
+
+      const file = req.file as Express.Multer.File;
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const variable = req.body.variable || `pattern_${Date.now()}`;
+      const patternName = req.body.name || file.originalname;
+
+      // Store the file in object storage
+      const envPrivateDir = globalThis.process.env.PRIVATE_OBJECT_DIR || '';
+      const bucketMatch = envPrivateDir.match(/^\/([^\/]+)\//);
+      const bucketName = bucketMatch ? bucketMatch[1] : '';
+
+      if (!bucketName) {
+        return res.status(500).json({ message: "Object storage not configured" });
+      }
+
+      const fileId = `pattern_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const objectName = `${envPrivateDir.replace(/^\/[^\/]+\//, '')}/macros/${macro.id}/${fileId}_${file.originalname}`;
+      
+      const bucket = objectStorageClient.bucket(bucketName);
+      const storageFile = bucket.file(objectName);
+      await storageFile.save(file.buffer);
+
+      const patternFile = {
+        id: fileId,
+        name: patternName,
+        variable,
+        storagePath: `/${bucketName}/${objectName}`,
+        originalFilename: file.originalname,
+      };
+
+      const currentPatternFiles = (macro.patternFiles as any[] || []);
+      const updatedPatternFiles = [...currentPatternFiles, patternFile];
+
+      const updatedMacro = await storage.updateMacro(macro.id, {
+        patternFiles: updatedPatternFiles,
+      } as any);
+
+      res.status(201).json(patternFile);
+    } catch (error) {
+      console.error("Error uploading pattern file:", error);
+      res.status(500).json({ message: "Failed to upload pattern file" });
+    }
+  });
+
+  // Delete pattern file from a macro
+  app.delete("/api/macros/:id/pattern-files/:fileId", isAuthenticated, isInternalOnly, async (req: any, res) => {
+    try {
+      const macro = await storage.getMacro(req.params.id);
+      if (!macro) {
+        return res.status(404).json({ message: "Macro not found" });
+      }
+
+      const currentPatternFiles = (macro.patternFiles as any[] || []);
+      const fileToDelete = currentPatternFiles.find((f: any) => f.id === req.params.fileId);
+      
+      if (!fileToDelete) {
+        return res.status(404).json({ message: "Pattern file not found" });
+      }
+
+      // Delete from object storage
+      try {
+        const storagePath = fileToDelete.storagePath;
+        const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
+        if (pathMatch) {
+          const [, bucketName, objectName] = pathMatch;
+          const bucket = objectStorageClient.bucket(bucketName);
+          const file = bucket.file(objectName);
+          await file.delete();
+        }
+      } catch (deleteError) {
+        console.error("Error deleting file from storage:", deleteError);
+      }
+
+      const updatedPatternFiles = currentPatternFiles.filter((f: any) => f.id !== req.params.fileId);
+      await storage.updateMacro(macro.id, {
+        patternFiles: updatedPatternFiles,
+      } as any);
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting pattern file:", error);
+      res.status(500).json({ message: "Failed to delete pattern file" });
+    }
+  });
+
+  // Get pattern files for process execution
+  app.get("/api/macros/pattern-files", isAuthenticated, async (req: any, res) => {
+    try {
+      const macros = await storage.getMacros();
+      const allPatternFiles: any[] = [];
+
+      for (const macro of macros) {
+        const patternFiles = (macro.patternFiles as any[] || []);
+        for (const pf of patternFiles) {
+          allPatternFiles.push({
+            ...pf,
+            macroId: macro.id,
+            macroName: macro.name,
+          });
+        }
+      }
+
+      res.json(allPatternFiles);
+    } catch (error) {
+      console.error("Error fetching pattern files:", error);
+      res.status(500).json({ message: "Failed to fetch pattern files" });
+    }
+  });
+
   return httpServer;
 }
 
