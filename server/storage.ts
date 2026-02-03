@@ -5,7 +5,8 @@ import {
   exportRecords, type ExportRecord, type InsertExportRecord,
   userProfiles, type UserProfile, type InsertUserProfile,
   mandantUserAssignments, type MandantUserAssignment, type InsertMandantUserAssignment,
-  users, type User
+  users, type User,
+  macros, type Macro, type InsertMacro
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -47,6 +48,13 @@ export interface IStorage {
   getExportRecord(id: string): Promise<ExportRecord | undefined>;
   getProcessExecutionById(id: string): Promise<ProcessExecution | undefined>;
   deleteProcessExecution(id: string): Promise<void>;
+
+  getMacros(): Promise<Macro[]>;
+  getMacro(id: string): Promise<Macro | undefined>;
+  getMacroByName(name: string): Promise<Macro | undefined>;
+  createMacro(macro: InsertMacro): Promise<Macro>;
+  updateMacro(id: string, macro: Partial<InsertMacro>): Promise<Macro | undefined>;
+  deleteMacro(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -278,6 +286,38 @@ export class DatabaseStorage implements IStorage {
   async deleteProcessExecution(id: string): Promise<void> {
     await db.delete(exportRecords).where(eq(exportRecords.processExecutionId, id));
     await db.delete(processExecutions).where(eq(processExecutions.id, id));
+  }
+
+  async getMacros(): Promise<Macro[]> {
+    return db.select().from(macros).orderBy(desc(macros.createdAt));
+  }
+
+  async getMacro(id: string): Promise<Macro | undefined> {
+    const [macro] = await db.select().from(macros).where(eq(macros.id, id));
+    return macro;
+  }
+
+  async getMacroByName(name: string): Promise<Macro | undefined> {
+    const [macro] = await db.select().from(macros).where(eq(macros.name, name));
+    return macro;
+  }
+
+  async createMacro(macro: InsertMacro): Promise<Macro> {
+    const [created] = await db.insert(macros).values(macro).returning();
+    return created;
+  }
+
+  async updateMacro(id: string, macro: Partial<InsertMacro>): Promise<Macro | undefined> {
+    const [updated] = await db
+      .update(macros)
+      .set({ ...macro, updatedAt: new Date() })
+      .where(eq(macros.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMacro(id: string): Promise<void> {
+    await db.delete(macros).where(eq(macros.id, id));
   }
 }
 

@@ -7,7 +7,8 @@ import {
   insertMandantSchema, 
   insertProcessSchema, 
   insertProcessExecutionSchema,
-  insertExportRecordSchema 
+  insertExportRecordSchema,
+  insertMacroSchema
 } from "@shared/schema";
 import { z } from "zod";
 import { callPythonTransform, checkPythonServiceHealth } from "./python-transform";
@@ -929,6 +930,64 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error updating user role:", error);
       res.status(500).json({ message: "Failed to update user role" });
+    }
+  });
+
+  // Macro routes (admin only)
+  app.get("/api/macros", isAuthenticated, async (req: any, res) => {
+    try {
+      const macros = await storage.getMacros();
+      res.json(macros);
+    } catch (error) {
+      console.error("Error fetching macros:", error);
+      res.status(500).json({ message: "Failed to fetch macros" });
+    }
+  });
+
+  app.get("/api/macros/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const macro = await storage.getMacro(req.params.id);
+      if (!macro) {
+        return res.status(404).json({ message: "Macro not found" });
+      }
+      res.json(macro);
+    } catch (error) {
+      console.error("Error fetching macro:", error);
+      res.status(500).json({ message: "Failed to fetch macro" });
+    }
+  });
+
+  app.post("/api/macros", isAuthenticated, isInternalOnly, async (req: any, res) => {
+    try {
+      const data = insertMacroSchema.parse(req.body);
+      const macro = await storage.createMacro(data);
+      res.status(201).json(macro);
+    } catch (error) {
+      console.error("Error creating macro:", error);
+      res.status(500).json({ message: "Failed to create macro" });
+    }
+  });
+
+  app.patch("/api/macros/:id", isAuthenticated, isInternalOnly, async (req: any, res) => {
+    try {
+      const macro = await storage.updateMacro(req.params.id, req.body);
+      if (!macro) {
+        return res.status(404).json({ message: "Macro not found" });
+      }
+      res.json(macro);
+    } catch (error) {
+      console.error("Error updating macro:", error);
+      res.status(500).json({ message: "Failed to update macro" });
+    }
+  });
+
+  app.delete("/api/macros/:id", isAuthenticated, isInternalOnly, async (req: any, res) => {
+    try {
+      await storage.deleteMacro(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting macro:", error);
+      res.status(500).json({ message: "Failed to delete macro" });
     }
   });
 

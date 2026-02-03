@@ -5,6 +5,8 @@ import {
   Building2,
   Users,
   ChevronDown,
+  FileCode,
+  Code,
 } from "lucide-react";
 import ecovisLogo from "@assets/Ecovis_Ball_Berry_1768979574924.jpg";
 import {
@@ -40,6 +42,11 @@ const menuItems = [
     title: "Dashboard",
     url: "/dashboard",
     icon: LayoutDashboard,
+  },
+  {
+    title: "Prozesse",
+    url: "/processes",
+    icon: FileCode,
   },
   {
     title: "Mandanteninformationen",
@@ -162,6 +169,18 @@ export function AppSidebar({ mandanten, selectedMandant, onSelectMandant }: AppS
                   <Link href="/users">
                     <Users className="h-4 w-4" />
                     <span>Benutzerverwaltung</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location === "/macros"}
+                  data-testid="nav-macros"
+                >
+                  <Link href="/macros">
+                    <Code className="h-4 w-4" />
+                    <span>Macros</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

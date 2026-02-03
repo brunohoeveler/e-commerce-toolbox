@@ -11,6 +11,10 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LandingPage } from "@/pages/LandingPage";
 import { DashboardPage } from "@/pages/DashboardPage";
+import { ProcessesPage } from "@/pages/ProcessesPage";
+import { ProcessBuilderPage } from "@/pages/ProcessBuilderPage";
+import { ProcessExecutePage } from "@/pages/ProcessExecutePage";
+import { MacrosPage } from "@/pages/MacrosPage";
 import { MandantSettingsPage } from "@/pages/MandantSettingsPage";
 import { MandantenListPage } from "@/pages/MandantenListPage";
 import { UsersPage } from "@/pages/UsersPage";
@@ -60,6 +64,11 @@ function AuthenticatedApp() {
             <Switch>
               <Route path="/" component={() => <DashboardPage mandantId={selectedMandant?.id || null} />} />
               <Route path="/dashboard" component={() => <DashboardPage mandantId={selectedMandant?.id || null} />} />
+              <Route path="/processes" component={() => <ProcessesPage mandantId={selectedMandant?.id || null} />} />
+              <Route path="/processes/new" component={() => <ProcessBuilderPage mandantId={selectedMandant?.id || null} />} />
+              <Route path="/processes/:id/edit" component={({ params }) => <ProcessBuilderPage mandantId={selectedMandant?.id || null} processId={params.id} />} />
+              <Route path="/processes/:id/execute" component={({ params }) => <ProcessExecutePage mandantId={selectedMandant?.id || null} processId={params.id} />} />
+              <Route path="/macros" component={MacrosPage} />
               <Route path="/settings" component={() => <MandantSettingsPage mandantId={selectedMandant?.id || null} mandant={selectedMandant} />} />
               <Route path="/mandanten" component={() => <MandantenListPage onSelectMandant={handleSelectMandant} />} />
               <Route path="/users" component={UsersPage} />

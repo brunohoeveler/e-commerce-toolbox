@@ -54,18 +54,25 @@ export const mandantUserAssignmentsRelations = relations(mandantUserAssignments,
 }));
 
 export const processStatusEnum = pgEnum("process_status", ["pending", "completed", "failed"]);
-export const processTypeEnum = pgEnum("process_type", ["revenue", "payments"]);
+
+export const macros = pgTable("macros", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  pythonCode: text("python_code").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
 
 export const processes = pgTable("processes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   mandantId: varchar("mandant_id").notNull(),
   name: text("name").notNull(),
   description: text("description"),
-  processType: processTypeEnum("process_type").notNull().default("payments"),
   inputFileCount: integer("input_file_count").notNull().default(1),
   inputFileSlots: jsonb("input_file_slots").notNull().default([]),
-  transformationSteps: jsonb("transformation_steps").notNull().default([]),
-  sampleFileMetadata: jsonb("sample_file_metadata").notNull().default([]),
+  pythonCode: text("python_code").notNull().default(""),
+  outputFiles: jsonb("output_files").notNull().default([]),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -157,6 +164,12 @@ export const insertUserProfileSchema = createInsertSchema(userProfiles).omit({
   createdAt: true,
 });
 
+export const insertMacroSchema = createInsertSchema(macros).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertMandantUserAssignmentSchema = createInsertSchema(mandantUserAssignments).omit({
   id: true,
   createdAt: true,
@@ -180,18 +193,22 @@ export type UserProfile = typeof userProfiles.$inferSelect;
 export type InsertMandantUserAssignment = z.infer<typeof insertMandantUserAssignmentSchema>;
 export type MandantUserAssignment = typeof mandantUserAssignments.$inferSelect;
 
-export interface TransformationStep {
-  id: string;
-  type: 'remove_column' | 'add_column' | 'rename_column' | 'select_columns' | 'merge_columns' | 'split_column' | 'replace_text' | 'remove_string' | 'extract_substring' | 'filter_rows' | 'remove_duplicates' | 'sort_rows' | 'match_files' | 'concat_files' | 'conditional' | 'calculate' | 'debit_credit' | 'format_number' | 'format_date';
-  config: Record<string, unknown>;
-}
+export type InsertMacro = z.infer<typeof insertMacroSchema>;
+export type Macro = typeof macros.$inferSelect;
 
 export interface InputFileSlot {
   id: string;
-  name: string;
+  variable: string;
+  label: string;
   description?: string;
   required: boolean;
-  inputType?: 'file' | 'manual';
+}
+
+export interface OutputFile {
+  id: string;
+  name: string;
+  dataFrameVariable: string;
+  format: 'csv' | 'xlsx' | 'json';
 }
 
 export interface FilePreview {
