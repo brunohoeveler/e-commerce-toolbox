@@ -218,3 +218,39 @@
     inset: -1px;
   }
 }
+
+/* Python Syntax Highlighting - VS Code Dark+ Theme */
+.py-keyword {
+  color: #c586c0;
+  font-weight: 500;
+}
+
+.py-string {
+  color: #ce9178;
+}
+
+.py-comment {
+  color: #6a9955;
+  font-style: italic;
+}
+
+.py-number {
+  color: #b5cea8;
+}
+
+.py-library {
+  color: #4ec9b0;
+}
+
+.py-function {
+  color: #dcdcaa;
+}
+
+.py-funcdef {
+  color: #dcdcaa;
+  font-weight: 500;
+}
+
+.py-variable {
+  color: #9cdcfe;
+}

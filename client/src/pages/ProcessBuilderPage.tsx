@@ -1,7 +1,60 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Save, Plus, Trash2, ArrowLeft, FileCode, Puzzle, Code2 } from "lucide-react";
+
+// Python syntax highlighting function
+function highlightPython(code: string): string {
+  // Escape HTML
+  let highlighted = code
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  
+  // Comments (must be first to avoid conflicts)
+  highlighted = highlighted.replace(/(#.*?)$/gm, '<span class="py-comment">$1</span>');
+  
+  // Triple-quoted strings
+  highlighted = highlighted.replace(/("""[\s\S]*?"""|'''[\s\S]*?''')/g, '<span class="py-string">$1</span>');
+  
+  // Double-quoted strings
+  highlighted = highlighted.replace(/("(?:[^"\\]|\\.)*")/g, '<span class="py-string">$1</span>');
+  
+  // Single-quoted strings  
+  highlighted = highlighted.replace(/('(?:[^'\\]|\\.)*')/g, '<span class="py-string">$1</span>');
+  
+  // Numbers
+  highlighted = highlighted.replace(/\b(\d+\.?\d*)\b/g, '<span class="py-number">$1</span>');
+  
+  // Python keywords
+  const keywords = ['import', 'from', 'as', 'def', 'class', 'return', 'if', 'elif', 'else', 'for', 'while', 'in', 'not', 'and', 'or', 'is', 'None', 'True', 'False', 'try', 'except', 'finally', 'raise', 'with', 'lambda', 'pass', 'break', 'continue', 'yield', 'global', 'nonlocal', 'assert', 'del'];
+  keywords.forEach(kw => {
+    const regex = new RegExp(`\\b(${kw})\\b`, 'g');
+    highlighted = highlighted.replace(regex, '<span class="py-keyword">$1</span>');
+  });
+  
+  // Libraries/modules (polars, pandas, etc.)
+  const libraries = ['pl', 'pd', 'polars', 'pandas', 'numpy', 'np', 'openpyxl', 'xlsxwriter', 'io', 'os', 're', 'json', 'csv', 'datetime'];
+  libraries.forEach(lib => {
+    const regex = new RegExp(`\\b(${lib})\\b`, 'g');
+    highlighted = highlighted.replace(regex, '<span class="py-library">$1</span>');
+  });
+  
+  // Common polars/pandas methods
+  const methods = ['read_csv', 'read_excel', 'to_csv', 'to_excel', 'filter', 'select', 'with_columns', 'join', 'group_by', 'agg', 'sort', 'head', 'tail', 'drop', 'rename', 'alias', 'cast', 'when', 'then', 'otherwise', 'col', 'lit', 'concat_str', 'str', 'contains', 'replace', 'split', 'is_null', 'is_not_null', 'fill_null', 'unique', 'count', 'sum', 'mean', 'min', 'max', 'len', 'apply', 'map', 'merge', 'concat', 'DataFrame', 'Series', 'coalesce'];
+  methods.forEach(method => {
+    const regex = new RegExp(`\\b(${method})\\b`, 'g');
+    highlighted = highlighted.replace(regex, '<span class="py-function">$1</span>');
+  });
+  
+  // Function definitions
+  highlighted = highlighted.replace(/\b(def)\s+(\w+)/g, '<span class="py-keyword">$1</span> <span class="py-funcdef">$2</span>');
+  
+  // Variable assignments (basic pattern)
+  highlighted = highlighted.replace(/^(\s*)(\w+)(\s*=)/gm, '$1<span class="py-variable">$2</span>$3');
+  
+  return highlighted;
+}
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -543,26 +596,37 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
           </div>
         </div>
         
-        {/* Code Editor Area */}
-        <div className="relative bg-[#1e1e1e]">
-          <div className="flex">
+        {/* Code Editor Area with Syntax Highlighting */}
+        <div className="relative bg-[#1e1e1e] overflow-x-auto">
+          <div className="flex min-w-max">
             {/* Line Numbers */}
-            <div className="select-none py-4 pr-4 pl-4 text-right text-[#858585] font-mono text-sm leading-6 bg-[#1e1e1e] border-r border-[#3c3c3c] min-w-[50px]">
+            <div className="sticky left-0 z-10 select-none py-4 pr-4 pl-4 text-right text-[#858585] font-mono text-sm leading-6 bg-[#1e1e1e] border-r border-[#3c3c3c] min-w-[50px]">
               {pythonCode.split('\n').map((_, i) => (
                 <div key={i}>{i + 1}</div>
               ))}
             </div>
             
-            {/* Code Textarea */}
-            <textarea
-              value={pythonCode}
-              onChange={(e) => setPythonCode(e.target.value)}
-              className="flex-1 bg-[#1e1e1e] text-[#d4d4d4] font-mono text-sm leading-6 p-4 resize-none outline-none min-h-[400px] placeholder-[#5a5a5a]"
-              placeholder="# Ihr Python-Code hier..."
-              spellCheck={false}
-              data-testid="textarea-python-code"
-              style={{ tabSize: 4 }}
-            />
+            {/* Code Editor with Overlay */}
+            <div className="relative flex-1 min-w-[600px]">
+              {/* Syntax Highlighted Layer (behind) */}
+              <pre 
+                className="absolute inset-0 font-mono text-sm leading-6 p-4 pointer-events-none whitespace-pre overflow-visible"
+                style={{ tabSize: 4 }}
+                aria-hidden="true"
+                dangerouslySetInnerHTML={{ __html: highlightPython(pythonCode) + '\n' }}
+              />
+              
+              {/* Transparent Textarea (on top for editing) */}
+              <textarea
+                value={pythonCode}
+                onChange={(e) => setPythonCode(e.target.value)}
+                className="relative w-full bg-transparent text-transparent caret-white font-mono text-sm leading-6 p-4 resize-none outline-none min-h-[400px] whitespace-pre overflow-visible"
+                placeholder="# Ihr Python-Code hier..."
+                spellCheck={false}
+                data-testid="textarea-python-code"
+                style={{ tabSize: 4 }}
+              />
+            </div>
           </div>
         </div>
         
