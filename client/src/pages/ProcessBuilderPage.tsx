@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Save, Plus, Trash2, ArrowLeft, FileCode, Puzzle } from "lucide-react";
+import { Save, Plus, Trash2, ArrowLeft, FileCode, Puzzle, Code2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -516,24 +516,66 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
               </CardContent>
             </Card>
           )}
+        </div>
+      </div>
 
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle>Python Code</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                value={pythonCode}
-                onChange={(e) => setPythonCode(e.target.value)}
-                className="font-mono text-sm min-h-[500px] resize-none"
-                placeholder="# Ihr Python-Code hier..."
-                data-testid="textarea-python-code"
-              />
-              <p className="text-xs text-muted-foreground mt-2">
-                Verfügbare Bibliotheken: polars, pandas, openpyxl, xlsxwriter
-              </p>
-            </CardContent>
-          </Card>
+      {/* Python Code Editor - Full Width Below */}
+      <div className="mt-6 rounded-lg overflow-hidden border border-[#3c3c3c] shadow-lg">
+        {/* Editor Header - Prettier Style */}
+        <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#3c3c3c]">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Code2 className="h-4 w-4 text-[#569cd6]" />
+              <span className="text-sm font-medium text-[#cccccc]">Python Code</span>
+            </div>
+            <Badge variant="outline" className="bg-[#1e1e1e] text-[#6a9955] border-[#3c3c3c] text-xs">
+              .py
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-[#808080]">
+            <span>polars</span>
+            <span className="text-[#3c3c3c]">|</span>
+            <span>pandas</span>
+            <span className="text-[#3c3c3c]">|</span>
+            <span>openpyxl</span>
+            <span className="text-[#3c3c3c]">|</span>
+            <span>xlsxwriter</span>
+          </div>
+        </div>
+        
+        {/* Code Editor Area */}
+        <div className="relative bg-[#1e1e1e]">
+          <div className="flex">
+            {/* Line Numbers */}
+            <div className="select-none py-4 pr-4 pl-4 text-right text-[#858585] font-mono text-sm leading-6 bg-[#1e1e1e] border-r border-[#3c3c3c] min-w-[50px]">
+              {pythonCode.split('\n').map((_, i) => (
+                <div key={i}>{i + 1}</div>
+              ))}
+            </div>
+            
+            {/* Code Textarea */}
+            <textarea
+              value={pythonCode}
+              onChange={(e) => setPythonCode(e.target.value)}
+              className="flex-1 bg-[#1e1e1e] text-[#d4d4d4] font-mono text-sm leading-6 p-4 resize-none outline-none min-h-[400px] placeholder-[#5a5a5a]"
+              placeholder="# Ihr Python-Code hier..."
+              spellCheck={false}
+              data-testid="textarea-python-code"
+              style={{ tabSize: 4 }}
+            />
+          </div>
+        </div>
+        
+        {/* Editor Footer */}
+        <div className="flex items-center justify-between px-4 py-2 bg-[#007acc] text-white text-xs">
+          <div className="flex items-center gap-4">
+            <span>Python</span>
+            <span>UTF-8</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span>Zeilen: {pythonCode.split('\n').length}</span>
+            <span>Spaces: 4</span>
+          </div>
         </div>
       </div>
     </div>
