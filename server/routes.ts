@@ -522,6 +522,54 @@ export async function registerRoutes(
       console.log("Executing Python code with files:", filesForPython.map(f => ({ var: f.variable, name: f.filename })));
       console.log("Output files config:", outputFiles);
 
+      // Parse month and year from form data (default to current month/year)
+      const month = parseInt(req.body.month) || new Date().getMonth() + 1;
+      const year = parseInt(req.body.year) || new Date().getFullYear();
+
+      // Create process execution record (status: pending)
+      const execution = await storage.createProcessExecution({
+        processId: processData.id,
+        mandantId: processData.mandantId,
+        status: "pending",
+        month,
+        year,
+        inputFiles: inputFileSlots.map(slot => ({ slotId: slot.id, label: slot.label })),
+        attachments: [],
+        transactionCount: 0,
+      });
+
+      // Save uploaded files to object storage as attachments
+      const attachments: Array<{ slotId: string; slotLabel: string; fileName: string; storagePath: string }> = [];
+      
+      for (const file of uploadedFiles) {
+        const slotId = file.fieldname.replace('file_', '');
+        const slot = inputFileSlots.find(s => s.id === slotId);
+        const slotLabel = slot?.label || `File ${slotId}`;
+        
+        try {
+          const storagePath = `/.private/executions/${execution.id}/${file.originalname}`;
+          const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+          
+          if (bucketId) {
+            const bucket = objectStorageClient.bucket(bucketId);
+            const fileObj = bucket.file(storagePath.replace(/^\/[^\/]+\//, ''));
+            await fileObj.save(file.buffer);
+            
+            attachments.push({
+              slotId,
+              slotLabel,
+              fileName: file.originalname,
+              storagePath: `/${bucketId}${storagePath.replace(/^\/[^\/]+/, '')}`,
+            });
+          }
+        } catch (uploadError) {
+          console.error("Error uploading file to storage:", uploadError);
+        }
+      }
+
+      // Update execution with attachments
+      await storage.updateProcessExecution(execution.id, { attachments });
+
       // Execute Python code
       const pythonResult = await executePythonCode(
         filesForPython,
@@ -536,6 +584,12 @@ export async function registerRoutes(
       );
 
       if (!pythonResult.success) {
+        // Update execution with failed status
+        await storage.updateProcessExecution(execution.id, {
+          status: "failed",
+          completedAt: new Date(),
+        });
+        
         return res.status(400).json({
           success: false,
           error: pythonResult.error || "Fehler bei der Ausführung des Python-Codes.",
@@ -567,9 +621,29 @@ export async function registerRoutes(
         };
       });
 
+      // Calculate totals from first successful output
+      const firstOutput = pythonResult.outputs.find(o => o.success);
+      const transactionCount = firstOutput?.row_count || 0;
+
+      // Store output data for history downloads
+      const outputDataForStorage = firstOutput ? {
+        columns: firstOutput.columns,
+        transactions: firstOutput.data || [],
+        format: firstOutput.format,
+      } : null;
+
+      // Update execution with completed status and output data
+      await storage.updateProcessExecution(execution.id, {
+        status: "completed",
+        completedAt: new Date(),
+        transactionCount,
+        outputData: outputDataForStorage,
+      });
+
       res.json({
         success: true,
         outputs: resultOutputs,
+        executionId: execution.id,
       });
     } catch (error: any) {
       console.error("Error executing process:", error);

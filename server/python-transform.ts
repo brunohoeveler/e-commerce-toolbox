@@ -18,6 +18,7 @@ interface OutputFileResult {
   content_type?: string;
   row_count?: number;
   columns?: string[];
+  data?: Array<Record<string, any>>;
   success: boolean;
   error?: string;
 }

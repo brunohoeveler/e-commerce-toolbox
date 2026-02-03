@@ -30,7 +30,7 @@ export interface IStorage {
   getRecentProcessExecutions(mandantId: string): Promise<ProcessExecution[]>;
   getProcessExecution(id: string): Promise<ProcessExecution | undefined>;
   createProcessExecution(execution: InsertProcessExecution): Promise<ProcessExecution>;
-  updateProcessExecution(id: string, execution: Partial<InsertProcessExecution>): Promise<ProcessExecution | undefined>;
+  updateProcessExecution(id: string, execution: Partial<InsertProcessExecution> & { completedAt?: Date }): Promise<ProcessExecution | undefined>;
 
   getExportRecords(mandantId: string): Promise<ExportRecord[]>;
   createExportRecord(record: InsertExportRecord): Promise<ExportRecord>;
@@ -165,10 +165,10 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateProcessExecution(id: string, execution: Partial<InsertProcessExecution>): Promise<ProcessExecution | undefined> {
+  async updateProcessExecution(id: string, execution: Partial<InsertProcessExecution> & { completedAt?: Date }): Promise<ProcessExecution | undefined> {
     const [updated] = await db
       .update(processExecutions)
-      .set({ ...execution, completedAt: new Date() })
+      .set(execution)
       .where(eq(processExecutions.id, id))
       .returning();
     return updated;
