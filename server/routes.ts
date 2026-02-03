@@ -625,11 +625,13 @@ export async function registerRoutes(
       const firstOutput = pythonResult.outputs.find(o => o.success);
       const transactionCount = firstOutput?.row_count || 0;
 
-      // Store output data for history downloads
+      // Store output data for history downloads - save the base64 content directly
       const outputDataForStorage = firstOutput ? {
         columns: firstOutput.columns,
-        transactions: firstOutput.data || [],
+        content: firstOutput.content,
+        contentType: firstOutput.content_type,
         format: firstOutput.format,
+        rowCount: firstOutput.row_count,
       } : null;
 
       // Update execution with completed status and output data
@@ -809,42 +811,26 @@ export async function registerRoutes(
       
       if (!(await requireMandantAccess(req, res, process.mandantId))) return;
       
-      const outputData = execution.outputData as { columns?: string[]; transactions?: Record<string, any>[] } | null;
+      const outputData = execution.outputData as { 
+        content?: string;
+        contentType?: string;
+        format?: string;
+        columns?: string[];
+        rowCount?: number;
+      } | null;
       
-      if (!outputData || !outputData.columns || !outputData.transactions) {
+      if (!outputData || !outputData.content) {
         return res.status(404).json({ message: "No transformation result available" });
       }
       
-      const delimiterMap: Record<string, string> = {
-        'comma': ',',
-        'semicolon': ';',
-        'tab': '\t'
-      };
-      const actualDelimiter = delimiterMap[delimiter as string] || ';';
-      
-      const columns = outputData.columns;
-      const transactions = outputData.transactions;
-      
-      const escapeField = (value: any): string => {
-        const str = value?.toString() || '';
-        if (str.includes(actualDelimiter) || str.includes('"') || str.includes('\n')) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      };
-      
-      const headerLine = columns.map(escapeField).join(actualDelimiter);
-      const dataLines = transactions.map(row => 
-        columns.map(col => escapeField(row[col])).join(actualDelimiter)
-      );
-      
-      const csvContent = [headerLine, ...dataLines].join('\n');
+      // Decode base64 content
+      const csvContent = Buffer.from(outputData.content, 'base64').toString('utf-8');
       
       const fileName = `${process.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${execution.month}_${execution.year}_result.csv`;
       
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Type', outputData.contentType || 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-      res.send('\ufeff' + csvContent);
+      res.send(csvContent);
       
     } catch (error) {
       console.error("Error downloading result:", error);
