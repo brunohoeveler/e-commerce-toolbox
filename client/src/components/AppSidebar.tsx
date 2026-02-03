@@ -7,6 +7,7 @@ import {
   ChevronDown,
   FileCode,
   Code,
+  History,
 } from "lucide-react";
 import ecovisLogo from "@assets/Ecovis_Ball_Berry_1768979574924.jpg";
 import {
@@ -47,6 +48,11 @@ const menuItems = [
     title: "Prozesse",
     url: "/processes",
     icon: FileCode,
+  },
+  {
+    title: "Historie",
+    url: "/processes/history",
+    icon: History,
   },
   {
     title: "Mandanteninformationen",
