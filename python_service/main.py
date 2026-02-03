@@ -75,9 +75,9 @@ def apply_transformation(df: pl.DataFrame, step: dict, all_dataframes: dict) -> 
                         pl.col(column).cast(pl.Utf8).str.split(separator).list.get(i, null_on_oob=True).alias(new_col)
                     )
     
-    elif step_type == 'remove_text':
+    elif step_type in ['remove_text', 'remove_string']:
         column = config.get('column', '')
-        text_to_remove = config.get('textToRemove', '')
+        text_to_remove = config.get('textToRemove', config.get('searchString', ''))
         if column and text_to_remove and column in df.columns:
             df = df.with_columns(
                 pl.col(column).cast(pl.Utf8).str.replace_all(text_to_remove, '').alias(column)
@@ -161,16 +161,35 @@ def apply_transformation(df: pl.DataFrame, step: dict, all_dataframes: dict) -> 
             df = df.with_columns(result_expr.alias(target_column))
     
     elif step_type == 'match_files':
-        source_file = config.get('sourceFile', '')
-        target_file = config.get('targetFile', '')
-        source_column = config.get('sourceColumn', '')
-        target_column = config.get('targetColumn', '')
+        file1_column = config.get('file1Column', config.get('sourceColumn', ''))
+        file2_column = config.get('file2Column', config.get('targetColumn', ''))
+        file1_slot = config.get('file1Slot', config.get('sourceFile', ''))
+        file2_slot = config.get('file2Slot', config.get('targetFile', ''))
         
-        if source_file and target_file and source_column and target_column:
-            if target_file in all_dataframes and source_column in df.columns:
-                target_df = all_dataframes[target_file]
-                if target_column in target_df.columns:
-                    df = df.join(target_df, left_on=source_column, right_on=target_column, how='left')
+        if file1_column and file2_column:
+            target_df = None
+            
+            if file2_slot and file2_slot in all_dataframes:
+                target_df = all_dataframes[file2_slot]
+            else:
+                slot_ids = list(all_dataframes.keys())
+                primary_slot = slot_ids[0] if slot_ids else None
+                
+                for slot_id in slot_ids:
+                    if slot_id != primary_slot:
+                        other_df = all_dataframes[slot_id]
+                        if file2_column in other_df.columns:
+                            target_df = other_df
+                            break
+                
+                if target_df is None and len(slot_ids) > 1:
+                    target_df = all_dataframes[slot_ids[1]]
+            
+            if target_df is not None and file1_column in df.columns:
+                if file2_column in target_df.columns:
+                    df = df.join(target_df, left_on=file1_column, right_on=file2_column, how='left')
+                else:
+                    print(f"Warning: Column '{file2_column}' not found in target file. Available columns: {target_df.columns}")
     
     elif step_type == 'replace_text':
         column = config.get('column', '')
