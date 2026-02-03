@@ -60,7 +60,7 @@ function AuthenticatedApp() {
               <ThemeToggle />
             </div>
           </header>
-          <main className="flex-1 overflow-hidden">
+          <main className="flex-1 overflow-auto">
             <Switch>
               <Route path="/" component={() => <DashboardPage mandantId={selectedMandant?.id || null} />} />
               <Route path="/dashboard" component={() => <DashboardPage mandantId={selectedMandant?.id || null} />} />
