@@ -970,13 +970,17 @@ export async function registerRoutes(
 
   app.patch("/api/macros/:id", isAuthenticated, isInternalOnly, async (req: any, res) => {
     try {
-      const macro = await storage.updateMacro(req.params.id, req.body);
+      const updateData = insertMacroSchema.partial().parse(req.body);
+      const macro = await storage.updateMacro(req.params.id, updateData);
       if (!macro) {
         return res.status(404).json({ message: "Macro not found" });
       }
       res.json(macro);
     } catch (error) {
       console.error("Error updating macro:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
       res.status(500).json({ message: "Failed to update macro" });
     }
   });
