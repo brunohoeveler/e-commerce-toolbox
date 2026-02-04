@@ -35,8 +35,8 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 │   │   ├── ProcessesPage.tsx     # Prozess-Übersicht (mit Löschfunktion)
 │   │   ├── ProcessBuilderPage.tsx# Prozess-Erstellung und -Bearbeitung
 │   │   ├── ProcessExecutePage.tsx# Monatliche Daten-Uploads
-│   │   ├── ProcessExecutionsPage.tsx# Übersicht ausgeführter Prozesse
-│   │   ├── ExportsPage.tsx       # Export-Bereich
+│   │   ├── ProcessHistoryPage.tsx# Übersicht ausgeführter Prozesse
+│   │   ├── VorlagenPage.tsx      # Makros und Vorlagedateien (2 Tabs)
 │   │   ├── MandantSettingsPage.tsx# Mandant-Einstellungen
 │   │   ├── MandantenListPage.tsx # Mandanten-Verwaltung
 │   │   └── UsersPage.tsx         # Benutzerverwaltung
@@ -73,6 +73,14 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 
 ### Mandant-Benutzer-Zuweisungen
 - id, mandantId, userId
+
+### Makros
+- id, name, description, pythonCode, patternFiles (JSONB Array)
+- patternFiles: Array von { id, name, variable, storagePath, originalFilename }
+
+### Vorlagedateien (Template Files)
+- id, name, description, storagePath, originalFilename, fileSize, mimeType, createdAt
+- Global verfügbar für alle Prozesse über `pl.read_csv("vorlagen/dateiname")`
 
 ## API-Endpunkte
 
