@@ -481,24 +481,16 @@ export async function registerRoutes(
                   const objectName = pathMatch[2];
                   
                   // Download file from object storage
-                  const downloadResult = await objectStorageClient.downloadObject(bucketName, objectName);
-                  if (downloadResult.ok) {
-                    const chunks: Uint8Array[] = [];
-                    for await (const chunk of downloadResult.value as unknown as AsyncIterable<Uint8Array>) {
-                      chunks.push(chunk);
-                    }
-                    const content = Buffer.concat(chunks);
-                    
-                    filesForPython.push({
-                      variable: pf.variable,
-                      content: content,
-                      filename: pf.originalFilename || `pattern_${pf.id}`,
-                    });
-                    console.log(`Loaded pattern file from macro "${macro.name}": ${pf.variable} (${pf.originalFilename})`);
-                  } else {
-                    patternFileErrors.push(`Variable "${pf.variable}" konnte nicht geladen werden`);
-                    console.warn(`Failed to download pattern file ${pf.variable}: storage returned error`);
-                  }
+                  const bucket = objectStorageClient.bucket(bucketName);
+                  const file = bucket.file(objectName);
+                  const [content] = await file.download();
+                  
+                  filesForPython.push({
+                    variable: pf.variable,
+                    content: content,
+                    filename: pf.originalFilename || `pattern_${pf.id}`,
+                  });
+                  console.log(`Loaded pattern file from macro "${macro.name}": ${pf.variable} (${pf.originalFilename})`);
                 } else {
                   patternFileErrors.push(`Ungültiger Speicherpfad für Variable "${pf.variable}"`);
                   console.warn(`Invalid storage path for pattern file ${pf.variable}: ${storagePath}`);
@@ -534,20 +526,15 @@ export async function registerRoutes(
               const bucketName = pathMatch[1];
               const objectName = pathMatch[2];
               
-              const downloadResult = await objectStorageClient.downloadObject(bucketName, objectName);
-              if (downloadResult.ok) {
-                const chunks: Uint8Array[] = [];
-                for await (const chunk of downloadResult.value as unknown as AsyncIterable<Uint8Array>) {
-                  chunks.push(chunk);
-                }
-                const content = Buffer.concat(chunks);
-                
-                templateFilesForPython.push({
-                  name: tpl.name,
-                  content_base64: content.toString('base64'),
-                });
-                console.log(`Loaded template file: ${tpl.name}`);
-              }
+              const bucket = objectStorageClient.bucket(bucketName);
+              const file = bucket.file(objectName);
+              const [content] = await file.download();
+              
+              templateFilesForPython.push({
+                name: tpl.name,
+                content_base64: content.toString('base64'),
+              });
+              console.log(`Loaded template file: ${tpl.name}`);
             }
           } catch (tplError) {
             console.warn(`Failed to load template file ${tpl.name}:`, tplError);
