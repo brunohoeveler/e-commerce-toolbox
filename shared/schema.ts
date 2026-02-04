@@ -3,7 +3,6 @@ import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum } fr
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export * from "./models/auth";
 export * from "./schema/auth";
 
 export const userRoleEnum = pgEnum("user_role", ["internal", "external", "admin"]);

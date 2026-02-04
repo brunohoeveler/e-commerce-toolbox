@@ -5,7 +5,7 @@ import {
   exportRecords, type ExportRecord, type InsertExportRecord,
   userProfiles, type UserProfile, type InsertUserProfile,
   mandantUserAssignments, type MandantUserAssignment, type InsertMandantUserAssignment,
-  users, type User,
+  user, type AuthUser,
   macros, type Macro, type InsertMacro,
   templateFiles, type TemplateFile, type InsertTemplateFile
 } from "@shared/schema";
@@ -39,9 +39,9 @@ export interface IStorage {
   getUserProfile(userId: string): Promise<UserProfile | undefined>;
   createUserProfile(profile: InsertUserProfile): Promise<UserProfile>;
   updateUserProfile(userId: string, profile: Partial<InsertUserProfile>): Promise<UserProfile | undefined>;
-  getUsers(): Promise<(User & { profile?: UserProfile })[]>;
+  getUsers(): Promise<(AuthUser & { profile?: UserProfile })[]>;
 
-  getMandantUserAssignments(mandantId: string): Promise<(MandantUserAssignment & { user: User })[]>;
+  getMandantUserAssignments(mandantId: string): Promise<(MandantUserAssignment & { user: AuthUser })[]>;
   createMandantUserAssignment(assignment: InsertMandantUserAssignment): Promise<MandantUserAssignment>;
   deleteMandantUserAssignment(mandantId: string, userId: string): Promise<void>;
   getUserAssignedMandanten(userId: string): Promise<Mandant[]>;
@@ -214,28 +214,28 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getUsers(): Promise<(User & { profile?: UserProfile })[]> {
-    const allUsers = await db.select().from(users).orderBy(desc(users.createdAt));
+  async getUsers(): Promise<(AuthUser & { profile?: UserProfile })[]> {
+    const allUsers = await db.select().from(user).orderBy(desc(user.createdAt));
     const allProfiles = await db.select().from(userProfiles);
     
-    return allUsers.map(user => ({
-      ...user,
-      profile: allProfiles.find(p => p.userId === user.id)
+    return allUsers.map(u => ({
+      ...u,
+      profile: allProfiles.find(p => p.userId === u.id)
     }));
   }
 
-  async getMandantUserAssignments(mandantId: string): Promise<(MandantUserAssignment & { user: User })[]> {
+  async getMandantUserAssignments(mandantId: string): Promise<(MandantUserAssignment & { user: AuthUser })[]> {
     const assignments = await db
       .select()
       .from(mandantUserAssignments)
       .where(eq(mandantUserAssignments.mandantId, mandantId));
     
-    const result: (MandantUserAssignment & { user: User })[] = [];
+    const result: (MandantUserAssignment & { user: AuthUser })[] = [];
     
     for (const assignment of assignments) {
-      const [user] = await db.select().from(users).where(eq(users.id, assignment.userId));
-      if (user) {
-        result.push({ ...assignment, user });
+      const [foundUser] = await db.select().from(user).where(eq(user.id, assignment.userId));
+      if (foundUser) {
+        result.push({ ...assignment, user: foundUser });
       }
     }
     

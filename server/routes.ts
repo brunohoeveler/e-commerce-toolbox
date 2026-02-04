@@ -85,7 +85,8 @@ export async function registerRoutes(
   app.get("/api/user", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user!.id;
-      const profile = await storage.getUserProfile(userId);
+      // getUserContext creates a profile if it doesn't exist
+      const { profile } = await getUserContext(userId);
       res.json({
         ...req.user,
         profile,
