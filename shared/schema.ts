@@ -73,6 +73,16 @@ export interface PatternFile {
   originalFilename: string;
 }
 
+export const templateFiles = pgTable("template_files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  originalFilename: text("original_filename").notNull(),
+  storagePath: text("storage_path").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const processes = pgTable("processes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   mandantId: varchar("mandant_id").notNull(),
@@ -205,6 +215,14 @@ export type MandantUserAssignment = typeof mandantUserAssignments.$inferSelect;
 
 export type InsertMacro = z.infer<typeof insertMacroSchema>;
 export type Macro = typeof macros.$inferSelect;
+
+export const insertTemplateFileSchema = createInsertSchema(templateFiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertTemplateFile = z.infer<typeof insertTemplateFileSchema>;
+export type TemplateFile = typeof templateFiles.$inferSelect;
 
 export interface InputFileSlot {
   id: string;

@@ -6,7 +6,8 @@ import {
   userProfiles, type UserProfile, type InsertUserProfile,
   mandantUserAssignments, type MandantUserAssignment, type InsertMandantUserAssignment,
   users, type User,
-  macros, type Macro, type InsertMacro
+  macros, type Macro, type InsertMacro,
+  templateFiles, type TemplateFile, type InsertTemplateFile
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc } from "drizzle-orm";
@@ -55,6 +56,13 @@ export interface IStorage {
   createMacro(macro: InsertMacro): Promise<Macro>;
   updateMacro(id: string, macro: Partial<InsertMacro>): Promise<Macro | undefined>;
   deleteMacro(id: string): Promise<void>;
+
+  getTemplateFiles(): Promise<TemplateFile[]>;
+  getTemplateFile(id: string): Promise<TemplateFile | undefined>;
+  getTemplateFileByName(name: string): Promise<TemplateFile | undefined>;
+  createTemplateFile(file: InsertTemplateFile): Promise<TemplateFile>;
+  updateTemplateFile(id: string, file: Partial<InsertTemplateFile>): Promise<TemplateFile | undefined>;
+  deleteTemplateFile(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -318,6 +326,38 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMacro(id: string): Promise<void> {
     await db.delete(macros).where(eq(macros.id, id));
+  }
+
+  async getTemplateFiles(): Promise<TemplateFile[]> {
+    return db.select().from(templateFiles).orderBy(desc(templateFiles.createdAt));
+  }
+
+  async getTemplateFile(id: string): Promise<TemplateFile | undefined> {
+    const [file] = await db.select().from(templateFiles).where(eq(templateFiles.id, id));
+    return file;
+  }
+
+  async getTemplateFileByName(name: string): Promise<TemplateFile | undefined> {
+    const [file] = await db.select().from(templateFiles).where(eq(templateFiles.name, name));
+    return file;
+  }
+
+  async createTemplateFile(file: InsertTemplateFile): Promise<TemplateFile> {
+    const [created] = await db.insert(templateFiles).values(file).returning();
+    return created;
+  }
+
+  async updateTemplateFile(id: string, file: Partial<InsertTemplateFile>): Promise<TemplateFile | undefined> {
+    const [updated] = await db
+      .update(templateFiles)
+      .set({ ...file, updatedAt: new Date() })
+      .where(eq(templateFiles.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTemplateFile(id: string): Promise<void> {
+    await db.delete(templateFiles).where(eq(templateFiles.id, id));
   }
 }
 
