@@ -3,13 +3,14 @@ import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum } fr
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+import { user } from "./schema/auth";
 export * from "./schema/auth";
 
 export const userRoleEnum = pgEnum("user_role", ["internal", "external", "admin"]);
 
 export const userProfiles = pgTable("user_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().unique(),
+  userId: text("user_id").notNull().unique().references(() => user.id, { onDelete: "cascade" }),
   role: userRoleEnum("role").notNull().default("external"),
   createdAt: timestamp("created_at").defaultNow(),
 });
