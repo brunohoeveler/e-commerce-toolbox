@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { authClient } from "@/lib/auth-client";
+import { queryClient } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
 import ecovisKsoLogo from "@assets/ECOVIS_KSO_Logo-2024_1768979835444.jpg";
 
@@ -35,6 +36,8 @@ export function LoginPage() {
           variant: "destructive",
         });
       } else {
+        // Invalidate user query to trigger re-fetch with new session
+        await queryClient.invalidateQueries({ queryKey: ["/api/user"] });
         setLocation("/dashboard");
       }
     } catch (err) {
@@ -78,8 +81,10 @@ export function LoginPage() {
       } else {
         toast({
           title: "Erfolgreich registriert",
-          description: "Sie können sich jetzt anmelden.",
+          description: "Sie werden jetzt angemeldet.",
         });
+        // Invalidate user query to trigger re-fetch with new session
+        await queryClient.invalidateQueries({ queryKey: ["/api/user"] });
         setLocation("/dashboard");
       }
     } catch (err) {
