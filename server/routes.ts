@@ -1190,6 +1190,150 @@ export async function registerRoutes(
     }
   });
 
+  // Template Files CRUD - Global vorlagen files
+  app.get("/api/template-files", isAuthenticated, async (req: any, res) => {
+    try {
+      const files = await storage.getTemplateFiles();
+      res.json(files);
+    } catch (error) {
+      console.error("Error fetching template files:", error);
+      res.status(500).json({ message: "Failed to fetch template files" });
+    }
+  });
+
+  app.get("/api/template-files/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const file = await storage.getTemplateFile(req.params.id);
+      if (!file) {
+        return res.status(404).json({ message: "Template file not found" });
+      }
+      res.json(file);
+    } catch (error) {
+      console.error("Error fetching template file:", error);
+      res.status(500).json({ message: "Failed to fetch template file" });
+    }
+  });
+
+  app.post("/api/template-files", isAuthenticated, isInternalOnly, upload.single('file'), async (req: any, res) => {
+    try {
+      const file = req.file as Express.Multer.File;
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const name = req.body.name;
+      if (!name) {
+        return res.status(400).json({ message: "Name is required" });
+      }
+
+      // Check if name is already taken
+      const existing = await storage.getTemplateFileByName(name);
+      if (existing) {
+        return res.status(400).json({ message: "A template file with this name already exists" });
+      }
+
+      // Store the file in object storage under vorlagen/
+      const envPrivateDir = globalThis.process.env.PRIVATE_OBJECT_DIR || '';
+      const bucketMatch = envPrivateDir.match(/^\/([^\/]+)\//);
+      const bucketName = bucketMatch ? bucketMatch[1] : '';
+
+      if (!bucketName) {
+        return res.status(500).json({ message: "Object storage not configured" });
+      }
+
+      const fileId = `template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const objectName = `${envPrivateDir.replace(/^\/[^\/]+\//, '')}/vorlagen/${name}`;
+      
+      const bucket = objectStorageClient.bucket(bucketName);
+      const storageFile = bucket.file(objectName);
+      await storageFile.save(file.buffer);
+
+      const templateFile = await storage.createTemplateFile({
+        name,
+        originalFilename: file.originalname,
+        storagePath: `/${bucketName}/${objectName}`,
+        description: req.body.description || '',
+      });
+
+      res.status(201).json(templateFile);
+    } catch (error) {
+      console.error("Error uploading template file:", error);
+      res.status(500).json({ message: "Failed to upload template file" });
+    }
+  });
+
+  app.patch("/api/template-files/:id", isAuthenticated, isInternalOnly, async (req: any, res) => {
+    try {
+      const file = await storage.getTemplateFile(req.params.id);
+      if (!file) {
+        return res.status(404).json({ message: "Template file not found" });
+      }
+
+      const { description } = req.body;
+      const updated = await storage.updateTemplateFile(req.params.id, { description });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating template file:", error);
+      res.status(500).json({ message: "Failed to update template file" });
+    }
+  });
+
+  app.delete("/api/template-files/:id", isAuthenticated, isInternalOnly, async (req: any, res) => {
+    try {
+      const file = await storage.getTemplateFile(req.params.id);
+      if (!file) {
+        return res.status(404).json({ message: "Template file not found" });
+      }
+
+      // Delete from object storage
+      try {
+        const storagePath = file.storagePath;
+        const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
+        if (pathMatch) {
+          const [, bucketName, objectName] = pathMatch;
+          const bucket = objectStorageClient.bucket(bucketName);
+          const storageFile = bucket.file(objectName);
+          await storageFile.delete();
+        }
+      } catch (deleteError) {
+        console.error("Error deleting file from storage:", deleteError);
+      }
+
+      await storage.deleteTemplateFile(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting template file:", error);
+      res.status(500).json({ message: "Failed to delete template file" });
+    }
+  });
+
+  app.get("/api/template-files/:id/download", isAuthenticated, async (req: any, res) => {
+    try {
+      const file = await storage.getTemplateFile(req.params.id);
+      if (!file) {
+        return res.status(404).json({ message: "Template file not found" });
+      }
+
+      const storagePath = file.storagePath;
+      const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
+      if (!pathMatch) {
+        return res.status(500).json({ message: "Invalid storage path" });
+      }
+
+      const [, bucketName, objectName] = pathMatch;
+      const bucket = objectStorageClient.bucket(bucketName);
+      const storageFile = bucket.file(objectName);
+      const [content] = await storageFile.download();
+
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${file.originalFilename}"`);
+      res.send(content);
+    } catch (error) {
+      console.error("Error downloading template file:", error);
+      res.status(500).json({ message: "Failed to download template file" });
+    }
+  });
+
   return httpServer;
 }
 
