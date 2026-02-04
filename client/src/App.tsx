@@ -106,6 +106,12 @@ function AppContent() {
     return <LandingPage />;
   }
 
+  // Redirect authenticated users from /login to dashboard
+  if (location === "/login") {
+    window.location.href = "/dashboard";
+    return null;
+  }
+
   return <AuthenticatedApp />;
 }
 
