@@ -76,11 +76,10 @@ export function AppSidebar({ mandanten, selectedMandant, onSelectMandant }: AppS
           />
           <div className="flex flex-col">
             <span className="text-sm font-semibold">Ecovis</span>
-            <span className="text-xs text-muted-foreground">Mandanten Plattform</span>
+            <span className="text-xs text-muted-foreground">E-Commerce-Toolbox</span>
           </div>
         </div>
       </SidebarHeader>
-
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel className="px-4 text-xs font-medium text-muted-foreground">
@@ -194,7 +193,6 @@ export function AppSidebar({ mandanten, selectedMandant, onSelectMandant }: AppS
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-
       <SidebarFooter className="border-t border-sidebar-border p-4">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
