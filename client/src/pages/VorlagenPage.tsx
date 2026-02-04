@@ -1,12 +1,67 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Save, Trash2, Code, Loader2, Upload, File, X, Download, FileText } from "lucide-react";
+import { Plus, Save, Trash2, Code, Loader2, Upload, File, X, Download, FileText, Code2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+
+function highlightPython(code: string): string {
+  const tokens: Array<{type: string, value: string}> = [];
+  let remaining = code;
+  
+  const patterns: Array<{type: string, regex: RegExp}> = [
+    { type: 'comment', regex: /^#.*/ },
+    { type: 'string', regex: /^"""[\s\S]*?"""/ },
+    { type: 'string', regex: /^'''[\s\S]*?'''/ },
+    { type: 'string', regex: /^"(?:[^"\\]|\\.)*"/ },
+    { type: 'string', regex: /^'(?:[^'\\]|\\.)*'/ },
+    { type: 'keyword', regex: /^(import|from|as|def|class|return|if|elif|else|for|while|in|not|and|or|is|None|True|False|try|except|finally|raise|with|lambda|pass|break|continue|yield|global|nonlocal|assert|del)\b/ },
+    { type: 'library', regex: /^(pl|pd|polars|pandas|numpy|np|openpyxl|xlsxwriter)\b/ },
+    { type: 'function', regex: /^(read_csv|read_excel|to_csv|to_excel|filter|select|with_columns|join|group_by|agg|sort|head|tail|drop|rename|alias|cast|when|then|otherwise|col|lit|concat_str|contains|replace|split|is_null|is_not_null|fill_null|unique|count|sum|mean|min|max|len|apply|map|merge|concat|DataFrame|Series|coalesce|zip|dict|enumerate|slice|str|abs|round)\b/ },
+    { type: 'number', regex: /^\d+\.?\d*/ },
+    { type: 'identifier', regex: /^[a-zA-Z_]\w*/ },
+    { type: 'whitespace', regex: /^\s+/ },
+    { type: 'operator', regex: /^[+\-*/%=<>!&|^~]+/ },
+    { type: 'punctuation', regex: /^[[\](){}:,.]/ },
+    { type: 'other', regex: /^./ },
+  ];
+  
+  while (remaining.length > 0) {
+    let matched = false;
+    for (const {type, regex} of patterns) {
+      const match = remaining.match(regex);
+      if (match) {
+        tokens.push({type, value: match[0]});
+        remaining = remaining.slice(match[0].length);
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      tokens.push({type: 'other', value: remaining[0]});
+      remaining = remaining.slice(1);
+    }
+  }
+  
+  return tokens.map(({type, value}) => {
+    const escaped = value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    
+    switch(type) {
+      case 'comment': return `<span style="color:#6a9955;font-style:italic">${escaped}</span>`;
+      case 'string': return `<span style="color:#ce9178">${escaped}</span>`;
+      case 'keyword': return `<span style="color:#c586c0">${escaped}</span>`;
+      case 'library': return `<span style="color:#4ec9b0">${escaped}</span>`;
+      case 'function': return `<span style="color:#dcdcaa">${escaped}</span>`;
+      case 'number': return `<span style="color:#b5cea8">${escaped}</span>`;
+      default: return escaped;
+    }
+  }).join('');
+}
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -425,12 +480,70 @@ def process_data(df):
                   </div>
                   <div className="space-y-2">
                     <Label>Python Code</Label>
-                    <Textarea
-                      value={pythonCode}
-                      onChange={(e) => setPythonCode(e.target.value)}
-                      className="font-mono text-sm min-h-[300px] resize-none"
-                      data-testid="textarea-macro-code"
-                    />
+                    <div className="rounded-md overflow-hidden border border-[#3c3c3c]">
+                      <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#3c3c3c]">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
+                            <Code2 className="h-4 w-4 text-[#569cd6]" />
+                            <span className="text-sm font-medium text-[#cccccc]">Python Code</span>
+                          </div>
+                          <Badge variant="outline" className="bg-[#1e1e1e] text-[#6a9955] border-[#3c3c3c] text-xs">
+                            .py
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-[#808080]">
+                          <span>polars</span>
+                          <span>•</span>
+                          <span>pandas</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex bg-[#1e1e1e]" style={{ height: '300px' }}>
+                        <div 
+                          className="select-none py-4 pr-4 pl-4 text-right text-[#858585] font-mono text-sm leading-6 bg-[#1e1e1e] border-r border-[#3c3c3c] min-w-[50px] overflow-hidden"
+                          style={{ height: '300px' }}
+                        >
+                          {pythonCode.split('\n').map((_, i) => (
+                            <div key={i}>{i + 1}</div>
+                          ))}
+                        </div>
+                        
+                        <div 
+                          className="relative flex-1 overflow-auto"
+                          style={{ height: '300px' }}
+                        >
+                          <div className="relative min-h-full">
+                            <pre 
+                              className="font-mono text-sm leading-6 p-4 whitespace-pre text-[#d4d4d4]"
+                              style={{ tabSize: 4, margin: 0 }}
+                              aria-hidden="true"
+                              dangerouslySetInnerHTML={{ __html: highlightPython(pythonCode) + '\n' }}
+                            />
+                            
+                            <textarea
+                              value={pythonCode}
+                              onChange={(e) => setPythonCode(e.target.value)}
+                              className="absolute inset-0 w-full h-full bg-transparent text-transparent caret-white font-mono text-sm leading-6 p-4 resize-none outline-none whitespace-pre"
+                              placeholder="# Ihr Python-Code hier..."
+                              spellCheck={false}
+                              data-testid="textarea-macro-code"
+                              style={{ tabSize: 4 }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between px-4 py-1 bg-[#007acc] text-white text-xs">
+                        <div className="flex items-center gap-4">
+                          <span>Python</span>
+                          <span>UTF-8</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span>Zeilen: {pythonCode.split('\n').length}</span>
+                          <span>Spaces: 4</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   
                   <div className="space-y-4 border-t pt-4">
