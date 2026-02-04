@@ -5,14 +5,14 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 
 ## Aktuelle Version
 - MVP Version 1.0
-- Letzte Aktualisierung: Januar 2024
+- Letzte Aktualisierung: Februar 2026
 
 ## Tech Stack
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, Shadcn/UI
 - **Backend**: Express.js, Node.js
 - **Transformation Service**: Python FastAPI mit Polars (läuft auf Port 5001)
 - **Datenbank**: PostgreSQL mit Drizzle ORM
-- **Authentifizierung**: Replit Auth (OpenID Connect)
+- **Authentifizierung**: Better Auth (Email/Password)
 - **Dateispeicher**: Replit Object Storage
 
 ## Projektstruktur
@@ -31,6 +31,7 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 │   ├── lib/               # Utility-Funktionen
 │   ├── pages/             # Seiten-Komponenten
 │   │   ├── LandingPage.tsx       # Öffentliche Landing Page
+│   │   ├── LoginPage.tsx         # Login/Registrierung
 │   │   ├── DashboardPage.tsx     # Übersichts-Dashboard
 │   │   ├── ProcessesPage.tsx     # Prozess-Übersicht (mit Löschfunktion)
 │   │   ├── ProcessBuilderPage.tsx# Prozess-Erstellung und -Bearbeitung
@@ -45,12 +46,15 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 │   ├── db.ts              # Datenbankverbindung
 │   ├── routes.ts          # API-Endpunkte
 │   ├── storage.ts         # Datenbank-Operationen
+│   ├── lib/
+│   │   ├── auth.ts        # Better Auth Konfiguration
+│   │   └── auth-middleware.ts # Session-Validierung
 │   └── replit_integrations/
-│       ├── auth/          # Authentifizierung
 │       └── object_storage/# Dateispeicher
 └── shared/
     ├── schema.ts          # Drizzle Schema & TypeScript Types
-    └── models/auth.ts     # Auth-spezifische Modelle
+    └── schema/
+        └── auth.ts        # Better Auth Tabellen (user, session, account, verification)
 ```
 
 ## Datenmodelle
@@ -84,10 +88,12 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 
 ## API-Endpunkte
 
-### Authentifizierung
-- `GET /api/login` - Login starten
-- `GET /api/logout` - Logout
-- `GET /api/auth/user` - Aktueller Benutzer
+### Authentifizierung (Better Auth)
+- `POST /api/auth/sign-up/email` - Registrierung mit Email/Passwort
+- `POST /api/auth/sign-in/email` - Login mit Email/Passwort
+- `POST /api/auth/sign-out` - Logout
+- `GET /api/auth/session` - Session abrufen
+- `GET /api/user` - Aktueller Benutzer mit Profil
 
 ### Mandanten
 - `GET /api/mandanten` - Alle Mandate abrufen
