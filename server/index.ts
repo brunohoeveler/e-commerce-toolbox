@@ -3,6 +3,8 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { spawn, ChildProcess } from "child_process";
+import { toNodeHandler } from "better-auth/node";
+import { auth } from "./lib/auth";
 
 const app = express();
 const httpServer = createServer(app);
@@ -12,6 +14,10 @@ declare module "http" {
     rawBody: unknown;
   }
 }
+
+// Better Auth handler MUST be before express.json()
+// Express v5 uses new wildcard syntax: {*name}
+app.all("/api/auth/{*splat}", toNodeHandler(auth));
 
 app.use(
   express.json({

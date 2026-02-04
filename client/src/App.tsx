@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LandingPage } from "@/pages/LandingPage";
+import { LoginPage } from "@/pages/LoginPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ProcessesPage } from "@/pages/ProcessesPage";
 import { ProcessBuilderPage } from "@/pages/ProcessBuilderPage";
@@ -84,6 +85,7 @@ function AuthenticatedApp() {
 }
 
 function AppContent() {
+  const [location] = useLocation();
   const { user, isLoading, isAuthenticated } = useAuth();
 
   if (isLoading) {
@@ -98,6 +100,9 @@ function AppContent() {
   }
 
   if (!isAuthenticated) {
+    if (location === "/login") {
+      return <LoginPage />;
+    }
     return <LandingPage />;
   }
 

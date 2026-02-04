@@ -42,7 +42,7 @@ export function LandingPage() {
               />
             </div>
             <Button asChild data-testid="button-login-nav">
-              <a href="/api/login">Anmelden</a>
+              <a href="/login">Anmelden</a>
             </Button>
           </div>
         </div>
@@ -65,7 +65,7 @@ export function LandingPage() {
 
                 <div className="flex flex-col sm:flex-row gap-4">
                   <Button size="lg" asChild data-testid="button-get-started">
-                    <a href="/api/login">
+                    <a href="/login">
                       Jetzt starten
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </a>

@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { isAuthenticated, AuthRequest } from "./lib/auth-middleware";
 import { registerObjectStorageRoutes, ObjectStorageService, objectStorageClient } from "./replit_integrations/object_storage";
 import { 
   insertMandantSchema, 
@@ -15,14 +15,6 @@ import {
 import { z } from "zod";
 import { callPythonTransform, checkPythonServiceHealth, executePythonCode, TemplateFileData } from "./python-transform";
 import multer from "multer";
-
-interface AuthRequest extends Request {
-  user?: {
-    claims: {
-      sub: string;
-    };
-  };
-}
 
 async function getUserContext(userId: string) {
   let profile = await storage.getUserProfile(userId);
@@ -53,7 +45,7 @@ async function canAccessMandant(userId: string, mandantId: string): Promise<bool
 }
 
 function isInternalOnly(req: AuthRequest, res: Response, next: NextFunction) {
-  const userId = req.user?.claims?.sub;
+  const userId = req.user?.id;
   if (!userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
@@ -69,7 +61,7 @@ function isInternalOnly(req: AuthRequest, res: Response, next: NextFunction) {
 }
 
 async function requireMandantAccess(req: AuthRequest, res: Response, mandantId: string): Promise<boolean> {
-  const userId = req.user?.claims?.sub;
+  const userId = req.user?.id;
   if (!userId) {
     res.status(401).json({ message: "Unauthorized" });
     return false;
@@ -87,13 +79,26 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  await setupAuth(app);
-  registerAuthRoutes(app);
   registerObjectStorageRoutes(app);
+  
+  // Get current user with profile info for the app
+  app.get("/api/user", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user!.id;
+      const profile = await storage.getUserProfile(userId);
+      res.json({
+        ...req.user,
+        profile,
+      });
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
 
   app.get("/api/mandanten", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const { isInternal } = await getUserContext(userId);
       const mandanten = await storage.getMandantenForUser(userId, isInternal);
       res.json(mandanten);
@@ -105,7 +110,7 @@ export async function registerRoutes(
 
   app.get("/api/mandanten/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const mandantId = req.params.id;
       
       if (!(await requireMandantAccess(req, res, mandantId))) return;
@@ -137,7 +142,7 @@ export async function registerRoutes(
 
   app.patch("/api/mandanten/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const mandantId = req.params.id;
       
       const { isInternal } = await getUserContext(userId);
@@ -172,7 +177,7 @@ export async function registerRoutes(
 
   app.get("/api/mandanten/:id/users", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const mandantId = req.params.id;
       
       const { isInternal } = await getUserContext(userId);
@@ -221,7 +226,7 @@ export async function registerRoutes(
 
   app.get("/api/processes", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const mandantId = req.query.mandantId as string;
       
       if (!mandantId) {
@@ -240,7 +245,7 @@ export async function registerRoutes(
 
   app.get("/api/processes/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const process = await storage.getProcess(req.params.id);
       
       if (!process) {
@@ -258,7 +263,7 @@ export async function registerRoutes(
 
   app.post("/api/processes", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       console.log("POST /api/processes - req.body:", JSON.stringify(req.body, null, 2));
       console.log("POST /api/processes - transformationSteps:", JSON.stringify(req.body.transformationSteps, null, 2));
       const data = insertProcessSchema.parse(req.body);
@@ -304,7 +309,7 @@ export async function registerRoutes(
 
   app.patch("/api/processes/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       console.log("PATCH /api/processes - req.body:", JSON.stringify(req.body, null, 2));
       console.log("PATCH /api/processes - transformationSteps:", JSON.stringify(req.body.transformationSteps, null, 2));
       const existingProcess = await storage.getProcess(req.params.id);
@@ -355,7 +360,7 @@ export async function registerRoutes(
 
   app.delete("/api/processes/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const existingProcess = await storage.getProcess(req.params.id);
       
       if (!existingProcess) {
@@ -377,7 +382,7 @@ export async function registerRoutes(
 
   app.post("/api/processes/:id/execute", isAuthenticated, upload.any(), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const processData = await storage.getProcess(req.params.id);
       
       if (!processData) {
@@ -695,7 +700,7 @@ export async function registerRoutes(
 
   app.get("/api/process-executions", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const { mandantId, month, year } = req.query;
       
       if (!mandantId) {
@@ -718,7 +723,7 @@ export async function registerRoutes(
 
   app.get("/api/process-executions/completed", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const mandantId = req.query.mandantId as string;
       
       if (!mandantId) {
@@ -737,7 +742,7 @@ export async function registerRoutes(
 
   app.get("/api/process-executions/recent", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const mandantId = req.query.mandantId as string;
       
       if (!mandantId) {
@@ -939,7 +944,7 @@ export async function registerRoutes(
 
   app.get("/api/exports", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const mandantId = req.query.mandantId as string;
       
       if (!mandantId) {
@@ -958,7 +963,7 @@ export async function registerRoutes(
 
   app.post("/api/exports", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const { processExecutionId, format, delimiter, mandantId } = req.body;
       
       if (!(await requireMandantAccess(req, res, mandantId))) return;
@@ -995,7 +1000,7 @@ export async function registerRoutes(
 
   app.get("/api/exports/:id/download", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.id;
       const exportRecord = await storage.getExportRecord(req.params.id);
       
       if (!exportRecord) {
