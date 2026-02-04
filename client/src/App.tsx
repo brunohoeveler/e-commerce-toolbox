@@ -15,7 +15,7 @@ import { ProcessesPage } from "@/pages/ProcessesPage";
 import { ProcessBuilderPage } from "@/pages/ProcessBuilderPage";
 import { ProcessExecutePage } from "@/pages/ProcessExecutePage";
 import { ProcessHistoryPage } from "@/pages/ProcessHistoryPage";
-import { MacrosPage } from "@/pages/MacrosPage";
+import { VorlagenPage } from "@/pages/VorlagenPage";
 import { MandantSettingsPage } from "@/pages/MandantSettingsPage";
 import { MandantenListPage } from "@/pages/MandantenListPage";
 import { UsersPage } from "@/pages/UsersPage";
@@ -70,7 +70,7 @@ function AuthenticatedApp() {
               <Route path="/processes/:id/edit" component={({ params }) => <ProcessBuilderPage mandantId={selectedMandant?.id || null} processId={params.id} />} />
               <Route path="/processes/:id/execute" component={({ params }) => <ProcessExecutePage mandantId={selectedMandant?.id || null} processId={params.id} />} />
               <Route path="/processes/history" component={() => <ProcessHistoryPage mandantId={selectedMandant?.id || null} />} />
-              <Route path="/macros" component={MacrosPage} />
+              <Route path="/vorlagen" component={VorlagenPage} />
               <Route path="/settings" component={() => <MandantSettingsPage mandantId={selectedMandant?.id || null} mandant={selectedMandant} />} />
               <Route path="/mandanten" component={() => <MandantenListPage onSelectMandant={handleSelectMandant} />} />
               <Route path="/users" component={UsersPage} />

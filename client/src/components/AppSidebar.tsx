@@ -181,12 +181,12 @@ export function AppSidebar({ mandanten, selectedMandant, onSelectMandant }: AppS
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
-                  isActive={location === "/macros"}
-                  data-testid="nav-macros"
+                  isActive={location === "/vorlagen"}
+                  data-testid="nav-vorlagen"
                 >
-                  <Link href="/macros">
+                  <Link href="/vorlagen">
                     <Code className="h-4 w-4" />
-                    <span>Macros</span>
+                    <span>Vorlagen</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
