@@ -414,7 +414,8 @@ async def execute_python_code(
     slot_mapping: str = Form(...),
     python_code: str = Form(...),
     output_files: str = Form(...),
-    template_files: Optional[str] = Form(None)
+    template_files: Optional[str] = Form(None),
+    mandant_info: Optional[str] = Form(None)
 ):
     """
     Execute user-defined Python code with uploaded files as input.
@@ -424,6 +425,7 @@ async def execute_python_code(
     - python_code: The Python code to execute
     - output_files: JSON array of output file definitions
     - template_files: Optional JSON array of template files [{name, content_base64}]
+    - mandant_info: Optional JSON object with mandant information (mandantennummer, beraternummer, etc.)
     """
     try:
         mapping = json.loads(slot_mapping)
@@ -456,6 +458,17 @@ async def execute_python_code(
             'pd': pd,
             'io': io,
         }
+        
+        # Add mandant info as variables if provided
+        if mandant_info:
+            try:
+                mandant_data = json.loads(mandant_info)
+                namespace['mandantennummer'] = mandant_data.get('mandantennummer', 0)
+                namespace['beraternummer'] = mandant_data.get('beraternummer', 0)
+                namespace['sachkontenlaenge'] = mandant_data.get('sachkontenlaenge', 0)
+                namespace['sachkontenrahmen'] = mandant_data.get('sachkontenrahmen', 0)
+            except Exception as e:
+                print(f"Warning: Failed to parse mandant info: {e}")
         
         # Change to work directory so relative paths work
         original_cwd = os.getcwd()

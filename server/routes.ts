@@ -605,7 +605,16 @@ export async function registerRoutes(
       // Update execution with attachments
       await storage.updateProcessExecution(execution.id, { attachments });
 
-      // Execute Python code with template files
+      // Get mandant info for Python variables
+      const mandant = await storage.getMandant(processData.mandantId);
+      const mandantInfo = mandant ? {
+        mandantennummer: mandant.mandantenNummer,
+        beraternummer: mandant.beraterNummer,
+        sachkontenlaenge: mandant.sachkontenLaenge,
+        sachkontenrahmen: mandant.sachkontenRahmen,
+      } : undefined;
+
+      // Execute Python code with template files and mandant info
       const pythonResult = await executePythonCode(
         filesForPython,
         pythonCode,
@@ -616,7 +625,8 @@ export async function registerRoutes(
           format: of.format,
           delimiter: of.delimiter || ';',
         })),
-        templateFilesForPython.length > 0 ? templateFilesForPython : undefined
+        templateFilesForPython.length > 0 ? templateFilesForPython : undefined,
+        mandantInfo
       );
 
       if (!pythonResult.success) {

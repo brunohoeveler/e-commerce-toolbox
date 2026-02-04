@@ -41,11 +41,19 @@ export interface TemplateFileData {
   content_base64: string;
 }
 
+export interface MandantInfo {
+  mandantennummer: number;
+  beraternummer: number;
+  sachkontenlaenge: number;
+  sachkontenrahmen: number;
+}
+
 export async function executePythonCode(
   files: Array<{ variable: string; content: Buffer; filename: string }>,
   pythonCode: string,
   outputFiles: OutputFileConfig[],
-  templateFiles?: TemplateFileData[]
+  templateFiles?: TemplateFileData[],
+  mandantInfo?: MandantInfo
 ): Promise<ExecuteCodeResult> {
   const formData = new FormData();
   
@@ -66,6 +74,11 @@ export async function executePythonCode(
   // Add template files if provided
   if (templateFiles && templateFiles.length > 0) {
     formData.append("template_files", JSON.stringify(templateFiles));
+  }
+  
+  // Add mandant info if provided
+  if (mandantInfo) {
+    formData.append("mandant_info", JSON.stringify(mandantInfo));
   }
   
   const response = await fetch(`${PYTHON_SERVICE_URL}/execute-code`, {
