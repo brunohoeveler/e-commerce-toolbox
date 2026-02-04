@@ -13,7 +13,7 @@ import {
   type OutputFile
 } from "@shared/schema";
 import { z } from "zod";
-import { callPythonTransform, checkPythonServiceHealth, executePythonCode } from "./python-transform";
+import { callPythonTransform, checkPythonServiceHealth, executePythonCode, TemplateFileData } from "./python-transform";
 import multer from "multer";
 
 interface AuthRequest extends Request {
@@ -522,6 +522,41 @@ export async function registerRoutes(
       console.log("Executing Python code with files:", filesForPython.map(f => ({ var: f.variable, name: f.filename })));
       console.log("Output files config:", outputFiles);
 
+      // Load global template files
+      const templateFilesForPython: TemplateFileData[] = [];
+      try {
+        const allTemplateFiles = await storage.getTemplateFiles();
+        for (const tpl of allTemplateFiles) {
+          try {
+            const storagePath = tpl.storagePath;
+            const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
+            if (pathMatch) {
+              const bucketName = pathMatch[1];
+              const objectName = pathMatch[2];
+              
+              const downloadResult = await objectStorageClient.downloadObject(bucketName, objectName);
+              if (downloadResult.ok) {
+                const chunks: Uint8Array[] = [];
+                for await (const chunk of downloadResult.value as unknown as AsyncIterable<Uint8Array>) {
+                  chunks.push(chunk);
+                }
+                const content = Buffer.concat(chunks);
+                
+                templateFilesForPython.push({
+                  name: tpl.name,
+                  content_base64: content.toString('base64'),
+                });
+                console.log(`Loaded template file: ${tpl.name}`);
+              }
+            }
+          } catch (tplError) {
+            console.warn(`Failed to load template file ${tpl.name}:`, tplError);
+          }
+        }
+      } catch (error) {
+        console.warn("Error loading template files:", error);
+      }
+
       // Parse month and year from form data (default to current month/year)
       const month = parseInt(req.body.month) || new Date().getMonth() + 1;
       const year = parseInt(req.body.year) || new Date().getFullYear();
@@ -570,7 +605,7 @@ export async function registerRoutes(
       // Update execution with attachments
       await storage.updateProcessExecution(execution.id, { attachments });
 
-      // Execute Python code
+      // Execute Python code with template files
       const pythonResult = await executePythonCode(
         filesForPython,
         pythonCode,
@@ -580,7 +615,8 @@ export async function registerRoutes(
           dataFrameVariable: of.dataFrameVariable,
           format: of.format,
           delimiter: of.delimiter || ';',
-        }))
+        })),
+        templateFilesForPython.length > 0 ? templateFilesForPython : undefined
       );
 
       if (!pythonResult.success) {

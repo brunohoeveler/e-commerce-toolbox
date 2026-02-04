@@ -413,7 +413,8 @@ async def execute_python_code(
     files: List[UploadFile] = File(...),
     slot_mapping: str = Form(...),
     python_code: str = Form(...),
-    output_files: str = Form(...)
+    output_files: str = Form(...),
+    template_files: Optional[str] = Form(None)
 ):
     """
     Execute user-defined Python code with uploaded files as input.
@@ -422,10 +423,32 @@ async def execute_python_code(
     - slot_mapping: JSON string mapping file indices to variable names (e.g., {"0": "data1", "1": "data2"})
     - python_code: The Python code to execute
     - output_files: JSON array of output file definitions
+    - template_files: Optional JSON array of template files [{name, content_base64}]
     """
     try:
         mapping = json.loads(slot_mapping)
         outputs = json.loads(output_files)
+        
+        # Create a temporary working directory
+        work_dir = tempfile.mkdtemp()
+        vorlagen_dir = os.path.join(work_dir, "vorlagen")
+        os.makedirs(vorlagen_dir, exist_ok=True)
+        
+        # Save template files to vorlagen/ directory
+        if template_files:
+            try:
+                import base64
+                templates = json.loads(template_files)
+                for tpl in templates:
+                    tpl_name = tpl.get('name', 'unknown')
+                    tpl_content_b64 = tpl.get('content_base64', '')
+                    if tpl_content_b64:
+                        tpl_content = base64.b64decode(tpl_content_b64)
+                        tpl_path = os.path.join(vorlagen_dir, tpl_name)
+                        with open(tpl_path, 'wb') as f:
+                            f.write(tpl_content)
+            except Exception as e:
+                print(f"Warning: Failed to load template files: {e}")
         
         # Create a namespace for code execution
         namespace = {
@@ -433,6 +456,10 @@ async def execute_python_code(
             'pd': pd,
             'io': io,
         }
+        
+        # Change to work directory so relative paths work
+        original_cwd = os.getcwd()
+        os.chdir(work_dir)
         
         # Load files into the namespace as file paths
         # We save files to temp directory so user code can use pl.read_csv(data1, ...) etc.
@@ -442,7 +469,7 @@ async def execute_python_code(
             variable_name = mapping.get(str(i), f"data{i+1}")
             
             # Save to a temp file so user can use pl.read_csv(data1, ...) with their own parameters
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}")
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}", dir=work_dir)
             temp_file.write(content)
             temp_file.close()
             temp_files.append(temp_file.name)
@@ -454,6 +481,9 @@ async def execute_python_code(
         try:
             exec(python_code, namespace)
         except Exception as e:
+            os.chdir(original_cwd)
+            import shutil
+            shutil.rmtree(work_dir, ignore_errors=True)
             return JSONResponse({
                 "success": False,
                 "error": f"Code execution error: {str(e)}",
@@ -524,12 +554,10 @@ async def execute_python_code(
                 "success": True
             })
         
-        # Cleanup temp files
-        for temp_file in temp_files:
-            try:
-                os.unlink(temp_file)
-            except:
-                pass
+        # Restore original directory and cleanup
+        os.chdir(original_cwd)
+        import shutil
+        shutil.rmtree(work_dir, ignore_errors=True)
         
         return JSONResponse({
             "success": True,

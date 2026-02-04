@@ -36,10 +36,16 @@ export interface OutputFileConfig {
   format: string;
 }
 
+export interface TemplateFileData {
+  name: string;
+  content_base64: string;
+}
+
 export async function executePythonCode(
   files: Array<{ variable: string; content: Buffer; filename: string }>,
   pythonCode: string,
-  outputFiles: OutputFileConfig[]
+  outputFiles: OutputFileConfig[],
+  templateFiles?: TemplateFileData[]
 ): Promise<ExecuteCodeResult> {
   const formData = new FormData();
   
@@ -56,6 +62,11 @@ export async function executePythonCode(
   formData.append("slot_mapping", JSON.stringify(slotMapping));
   formData.append("python_code", pythonCode);
   formData.append("output_files", JSON.stringify(outputFiles));
+  
+  // Add template files if provided
+  if (templateFiles && templateFiles.length > 0) {
+    formData.append("template_files", JSON.stringify(templateFiles));
+  }
   
   const response = await fetch(`${PYTHON_SERVICE_URL}/execute-code`, {
     method: "POST",
