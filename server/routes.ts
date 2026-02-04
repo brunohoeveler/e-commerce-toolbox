@@ -530,11 +530,15 @@ export async function registerRoutes(
               const file = bucket.file(objectName);
               const [content] = await file.download();
               
+              // Use name with extension from originalFilename for proper file matching
+              const ext = tpl.originalFilename ? tpl.originalFilename.substring(tpl.originalFilename.lastIndexOf('.')) : '';
+              const filenameForPython = tpl.name + ext;
+              
               templateFilesForPython.push({
-                name: tpl.name,
+                name: filenameForPython,
                 content_base64: content.toString('base64'),
               });
-              console.log(`Loaded template file: ${tpl.name}`);
+              console.log(`Loaded template file: ${filenameForPython}`);
             }
           } catch (tplError) {
             console.warn(`Failed to load template file ${tpl.name}:`, tplError);
