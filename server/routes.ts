@@ -16,13 +16,18 @@ import { z } from "zod";
 import { callPythonTransform, checkPythonServiceHealth, executePythonCode, TemplateFileData } from "./python-transform";
 import multer from "multer";
 
+// Helper to check if role has internal/admin privileges
+function hasInternalAccess(role: string | undefined | null): boolean {
+  return role === "internal" || role === "admin";
+}
+
 async function getUserContext(userId: string) {
   let profile = await storage.getUserProfile(userId);
   
   if (!profile) {
     const allUsers = await storage.getUsers();
     const allProfiles = allUsers.filter(u => u.profile).map(u => u.profile);
-    const hasAnyInternalUser = allProfiles.some(p => p?.role === "internal");
+    const hasAnyInternalUser = allProfiles.some(p => hasInternalAccess(p?.role));
     
     if (!hasAnyInternalUser) {
       profile = await storage.createUserProfile({ userId, role: "internal" });
@@ -31,7 +36,7 @@ async function getUserContext(userId: string) {
     }
   }
   
-  const isInternal = profile?.role === "internal";
+  const isInternal = hasInternalAccess(profile?.role);
   const assignments = isInternal ? [] : await storage.getUserMandantAssignments(userId);
   const assignedMandantIds = assignments.map(a => a.mandantId);
   
@@ -51,7 +56,7 @@ function isInternalOnly(req: AuthRequest, res: Response, next: NextFunction) {
   }
   
   storage.getUserProfile(userId).then(profile => {
-    if (profile?.role !== "internal") {
+    if (!hasInternalAccess(profile?.role)) {
       return res.status(403).json({ message: "Access denied. Internal users only." });
     }
     next();
@@ -276,7 +281,7 @@ export async function registerRoutes(
       const usedMacroIds = (data as any).usedMacroIds as string[] || [];
       if (usedMacroIds.length > 0) {
         const userProfile = await storage.getUserProfile(userId);
-        const isInternalUser = userProfile?.role === 'internal';
+        const isInternalUser = hasInternalAccess(userProfile?.role);
         
         // External users cannot reference macros (macros are internal-only)
         if (!isInternalUser && usedMacroIds.length > 0) {
@@ -328,7 +333,7 @@ export async function registerRoutes(
       const usedMacroIds = (data as any).usedMacroIds as string[] | undefined;
       if (usedMacroIds && usedMacroIds.length > 0) {
         const userProfile = await storage.getUserProfile(userId);
-        const isInternalUser = userProfile?.role === 'internal';
+        const isInternalUser = hasInternalAccess(userProfile?.role);
         
         // External users cannot reference macros (macros are internal-only)
         if (!isInternalUser) {
@@ -396,7 +401,7 @@ export async function registerRoutes(
       const usedMacroIds = (processData as any).usedMacroIds as string[] || [];
       if (usedMacroIds.length > 0) {
         const userProfile = await storage.getUserProfile(userId);
-        const isInternalUser = userProfile?.role === 'internal';
+        const isInternalUser = hasInternalAccess(userProfile?.role);
         
         if (!isInternalUser) {
           return res.status(403).json({ 

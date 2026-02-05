@@ -201,14 +201,14 @@ export function AppSidebar({ mandanten, selectedMandant, onSelectMandant }: AppS
               data-testid="button-user-menu"
             >
               <Avatar className="h-8 w-8">
-                <AvatarImage src={user?.profileImageUrl || undefined} />
+                <AvatarImage src={user?.image || undefined} />
                 <AvatarFallback>
-                  {user?.firstName?.[0] || user?.email?.[0] || "U"}
+                  {user?.name?.[0] || user?.email?.[0] || "U"}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-col text-left">
                 <span className="text-sm font-medium">
-                  {user?.firstName} {user?.lastName}
+                  {user?.name}
                 </span>
                 <span className="text-xs text-muted-foreground truncate max-w-32">
                   {user?.email}
