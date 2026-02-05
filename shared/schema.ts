@@ -19,6 +19,24 @@ export const userProfilesRelations = relations(userProfiles, ({ many }) => ({
   mandantAssignments: many(mandantUserAssignments),
 }));
 
+export interface DashboardConfig {
+  viewMode: "monthly" | "yearly";
+  showTotalRevenue: boolean;
+  showRevenueByPlatform: boolean;
+  showRevenueByCountry: boolean;
+  showRevenueByCurrency: boolean;
+  showProcessExecutions: boolean;
+}
+
+export const defaultDashboardConfig: DashboardConfig = {
+  viewMode: "monthly",
+  showTotalRevenue: true,
+  showRevenueByPlatform: true,
+  showRevenueByCountry: true,
+  showRevenueByCurrency: true,
+  showProcessExecutions: true,
+};
+
 export const mandanten = pgTable("mandanten", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -26,6 +44,7 @@ export const mandanten = pgTable("mandanten", {
   beraterNummer: integer("berater_nummer").notNull(),
   sachkontenLaenge: integer("sachkonten_laenge").notNull(),
   sachkontenRahmen: integer("sachkonten_rahmen").notNull(),
+  dashboardConfig: jsonb("dashboard_config").$type<DashboardConfig>().default(defaultDashboardConfig),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Building2, Users, UserPlus, Trash2, Save } from "lucide-react";
+import { Building2, Users, UserPlus, Trash2, Save, LayoutDashboard } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +30,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Mandant } from "@shared/schema";
+import type { Mandant, DashboardConfig } from "@shared/schema";
+import { defaultDashboardConfig } from "@shared/schema";
 
 // Better Auth user type
 interface AuthUser {
@@ -62,6 +65,8 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
     sachkontenRahmen: 3,
   });
 
+  const [dashboardConfig, setDashboardConfig] = useState<DashboardConfig>(defaultDashboardConfig);
+
   useEffect(() => {
     if (mandant) {
       setFormData({
@@ -71,6 +76,7 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
         sachkontenLaenge: mandant.sachkontenLaenge,
         sachkontenRahmen: mandant.sachkontenRahmen,
       });
+      setDashboardConfig(mandant.dashboardConfig || defaultDashboardConfig);
     }
   }, [mandant]);
 
@@ -101,6 +107,26 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
       toast({
         title: "Fehler",
         description: "Änderungen konnten nicht gespeichert werden.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateDashboardMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", `/api/mandanten/${mandantId}`, { dashboardConfig });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Gespeichert",
+        description: "Dashboard-Einstellungen wurden aktualisiert.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/mandanten"] });
+    },
+    onError: () => {
+      toast({
+        title: "Fehler",
+        description: "Dashboard-Einstellungen konnten nicht gespeichert werden.",
         variant: "destructive",
       });
     },
@@ -254,6 +280,128 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
               >
                 <Save className="h-4 w-4 mr-2" />
                 Änderungen speichern
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LayoutDashboard className="h-5 w-5" />
+              Dashboardverwaltung
+            </CardTitle>
+            <CardDescription>
+              Konfigurieren Sie, welche Elemente im Dashboard angezeigt werden
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-3">
+              <Label>Ansichtsmodus</Label>
+              <RadioGroup
+                value={dashboardConfig.viewMode}
+                onValueChange={(value: "monthly" | "yearly") =>
+                  setDashboardConfig(prev => ({ ...prev, viewMode: value }))
+                }
+                disabled={!isInternal}
+                className="flex gap-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="monthly" id="monthly" data-testid="radio-monthly" />
+                  <Label htmlFor="monthly" className="font-normal cursor-pointer">Monatsansicht</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="yearly" id="yearly" data-testid="radio-yearly" />
+                  <Label htmlFor="yearly" className="font-normal cursor-pointer">Jahresansicht</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            <div className="space-y-3">
+              <Label>Dashboard-Elemente</Label>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="showTotalRevenue"
+                    checked={dashboardConfig.showTotalRevenue}
+                    onCheckedChange={(checked) =>
+                      setDashboardConfig(prev => ({ ...prev, showTotalRevenue: !!checked }))
+                    }
+                    disabled={!isInternal}
+                    data-testid="checkbox-total-revenue"
+                  />
+                  <Label htmlFor="showTotalRevenue" className="font-normal cursor-pointer">
+                    Gesamtumsatz
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="showRevenueByPlatform"
+                    checked={dashboardConfig.showRevenueByPlatform}
+                    onCheckedChange={(checked) =>
+                      setDashboardConfig(prev => ({ ...prev, showRevenueByPlatform: !!checked }))
+                    }
+                    disabled={!isInternal}
+                    data-testid="checkbox-revenue-platform"
+                  />
+                  <Label htmlFor="showRevenueByPlatform" className="font-normal cursor-pointer">
+                    Umsatz nach Plattform
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="showRevenueByCountry"
+                    checked={dashboardConfig.showRevenueByCountry}
+                    onCheckedChange={(checked) =>
+                      setDashboardConfig(prev => ({ ...prev, showRevenueByCountry: !!checked }))
+                    }
+                    disabled={!isInternal}
+                    data-testid="checkbox-revenue-country"
+                  />
+                  <Label htmlFor="showRevenueByCountry" className="font-normal cursor-pointer">
+                    Umsatz nach Ländern
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="showRevenueByCurrency"
+                    checked={dashboardConfig.showRevenueByCurrency}
+                    onCheckedChange={(checked) =>
+                      setDashboardConfig(prev => ({ ...prev, showRevenueByCurrency: !!checked }))
+                    }
+                    disabled={!isInternal}
+                    data-testid="checkbox-revenue-currency"
+                  />
+                  <Label htmlFor="showRevenueByCurrency" className="font-normal cursor-pointer">
+                    Umsatz nach Währungen
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="showProcessExecutions"
+                    checked={dashboardConfig.showProcessExecutions}
+                    onCheckedChange={(checked) =>
+                      setDashboardConfig(prev => ({ ...prev, showProcessExecutions: !!checked }))
+                    }
+                    disabled={!isInternal}
+                    data-testid="checkbox-process-executions"
+                  />
+                  <Label htmlFor="showProcessExecutions" className="font-normal cursor-pointer">
+                    Ausgeführte Prozesse diesen Monat / dieses Jahr
+                  </Label>
+                </div>
+              </div>
+            </div>
+
+            {isInternal && (
+              <Button
+                onClick={() => updateDashboardMutation.mutate()}
+                disabled={updateDashboardMutation.isPending}
+                className="w-full"
+                data-testid="button-save-dashboard"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Dashboard-Einstellungen speichern
               </Button>
             )}
           </CardContent>
