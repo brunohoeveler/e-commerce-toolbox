@@ -48,12 +48,19 @@ export interface MandantInfo {
   sachkontenrahmen: number;
 }
 
+export interface TimePeriodInfo {
+  month?: number;
+  quarter?: number;
+  year: number;
+}
+
 export async function executePythonCode(
   files: Array<{ variable: string; content: Buffer; filename: string }>,
   pythonCode: string,
   outputFiles: OutputFileConfig[],
   templateFiles?: TemplateFileData[],
-  mandantInfo?: MandantInfo
+  mandantInfo?: MandantInfo,
+  timePeriodInfo?: TimePeriodInfo
 ): Promise<ExecuteCodeResult> {
   const formData = new FormData();
   
@@ -79,6 +86,11 @@ export async function executePythonCode(
   // Add mandant info if provided
   if (mandantInfo) {
     formData.append("mandant_info", JSON.stringify(mandantInfo));
+  }
+  
+  // Add time period info if provided
+  if (timePeriodInfo) {
+    formData.append("time_period_info", JSON.stringify(timePeriodInfo));
   }
   
   const response = await fetch(`${PYTHON_SERVICE_URL}/execute-code`, {

@@ -415,7 +415,8 @@ async def execute_python_code(
     python_code: str = Form(...),
     output_files: str = Form(...),
     template_files: Optional[str] = Form(None),
-    mandant_info: Optional[str] = Form(None)
+    mandant_info: Optional[str] = Form(None),
+    time_period_info: Optional[str] = Form(None)
 ):
     """
     Execute user-defined Python code with uploaded files as input.
@@ -426,6 +427,7 @@ async def execute_python_code(
     - output_files: JSON array of output file definitions
     - template_files: Optional JSON array of template files [{name, content_base64}]
     - mandant_info: Optional JSON object with mandant information (mandantennummer, beraternummer, etc.)
+    - time_period_info: Optional JSON object with time period information (month, quarter, year)
     """
     try:
         mapping = json.loads(slot_mapping)
@@ -469,6 +471,18 @@ async def execute_python_code(
                 namespace['sachkontenrahmen'] = mandant_data.get('sachkontenrahmen', 0)
             except Exception as e:
                 print(f"Warning: Failed to parse mandant info: {e}")
+        
+        # Add time period info as variables if provided
+        if time_period_info:
+            try:
+                time_data = json.loads(time_period_info)
+                namespace['year'] = time_data.get('year', 0)
+                if 'month' in time_data:
+                    namespace['month'] = time_data.get('month')
+                if 'quarter' in time_data:
+                    namespace['quarter'] = time_data.get('quarter')
+            except Exception as e:
+                print(f"Warning: Failed to parse time period info: {e}")
         
         # Change to work directory so relative paths work
         original_cwd = os.getcwd()

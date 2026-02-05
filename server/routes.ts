@@ -13,7 +13,7 @@ import {
   type OutputFile
 } from "@shared/schema";
 import { z } from "zod";
-import { callPythonTransform, checkPythonServiceHealth, executePythonCode, TemplateFileData } from "./python-transform";
+import { callPythonTransform, checkPythonServiceHealth, executePythonCode, TemplateFileData, TimePeriodInfo } from "./python-transform";
 import multer from "multer";
 
 // Helper to check if role has internal/admin privileges
@@ -559,16 +559,18 @@ export async function registerRoutes(
         console.warn("Error loading template files:", error);
       }
 
-      // Parse month and year from form data (default to current month/year)
-      const month = parseInt(req.body.month) || new Date().getMonth() + 1;
+      // Parse month, quarter, and year from form data
       const year = parseInt(req.body.year) || new Date().getFullYear();
+      const month = req.body.month ? parseInt(req.body.month) : undefined;
+      const quarter = req.body.quarter ? parseInt(req.body.quarter) : undefined;
 
       // Create process execution record (status: pending)
       const execution = await storage.createProcessExecution({
         processId: processData.id,
         mandantId: processData.mandantId,
         status: "pending",
-        month,
+        month: month || null,
+        quarter: quarter || null,
         year,
         inputFiles: inputFileSlots.map(slot => ({ slotId: slot.id, label: slot.label })),
         attachments: [],
@@ -616,7 +618,12 @@ export async function registerRoutes(
         sachkontenrahmen: mandant.sachkontenRahmen,
       } : undefined;
 
-      // Execute Python code with template files and mandant info
+      // Prepare time period info for Python
+      const timePeriodInfo: TimePeriodInfo = { year };
+      if (month !== undefined) timePeriodInfo.month = month;
+      if (quarter !== undefined) timePeriodInfo.quarter = quarter;
+
+      // Execute Python code with template files, mandant info, and time period
       const pythonResult = await executePythonCode(
         filesForPython,
         pythonCode,
@@ -628,7 +635,8 @@ export async function registerRoutes(
           delimiter: of.delimiter || ';',
         })),
         templateFilesForPython.length > 0 ? templateFilesForPython : undefined,
-        mandantInfo
+        mandantInfo,
+        timePeriodInfo
       );
 
       if (!pythonResult.success) {

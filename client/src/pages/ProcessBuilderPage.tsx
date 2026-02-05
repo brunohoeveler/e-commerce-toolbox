@@ -90,18 +90,27 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [executionFrequency, setExecutionFrequency] = useState<"weekly" | "monthly" | "quarterly" | "yearly">("monthly");
   const [inputFileSlots, setInputFileSlots] = useState<InputFileSlot[]>([]);
-  const [pythonCode, setPythonCode] = useState(`# Verfügbare DataFrames basierend auf Input-Dateien:
-# data1, data2, etc. (je nach Anzahl der Input-Dateien)
+  const [pythonCode, setPythonCode] = useState(`# Verfügbare Variablen basierend auf Input-Dateien:
+# data1, data2, etc. (Dateipfade je nach Anzahl der Input-Dateien)
+#
+# Verfügbare Zeitraum-Variablen:
+# month - Monat (1-12, bei wöchentlicher/monatlicher Ausführung)
+# quarter - Quartal (1-4, bei quartalsweiser Ausführung)
+# year - Jahr (immer verfügbar)
+#
+# Verfügbare Mandant-Variablen:
+# mandantennummer, beraternummer, sachkontenlaenge, sachkontenrahmen
 #
 # Verfügbare Bibliotheken:
 # import polars as pl
 # import pandas as pd
-# import openpyxl
-# import xlsxwriter
+# import openpyxl, xlsxwriter
 #
 # Beispiel:
-# result = data1.filter(pl.col("amount") > 0)
+# df = pl.read_csv(data1, separator=";")
+# result = df.filter(pl.col("amount") > 0)
 
 `);
   const [outputFiles, setOutputFiles] = useState<OutputFile[]>([]);
@@ -128,6 +137,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
     if (existingProcess) {
       setName(existingProcess.name);
       setDescription(existingProcess.description || "");
+      setExecutionFrequency((existingProcess as any).executionFrequency || "monthly");
       setInputFileSlots(existingProcess.inputFileSlots as InputFileSlot[] || []);
       setPythonCode(existingProcess.pythonCode || "");
       setOutputFiles(existingProcess.outputFiles as OutputFile[] || []);
@@ -140,6 +150,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       mandantId: string;
       name: string;
       description: string;
+      executionFrequency: "weekly" | "monthly" | "quarterly" | "yearly";
       inputFileCount: number;
       inputFileSlots: InputFileSlot[];
       pythonCode: string;
@@ -260,6 +271,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       mandantId,
       name,
       description,
+      executionFrequency,
       inputFileCount: inputFileSlots.length,
       inputFileSlots,
       pythonCode,
@@ -380,6 +392,26 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                   rows={3}
                   data-testid="input-process-description"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="executionFrequency">Ausführungsfrequenz</Label>
+                <Select
+                  value={executionFrequency}
+                  onValueChange={(value: "weekly" | "monthly" | "quarterly" | "yearly") => setExecutionFrequency(value)}
+                >
+                  <SelectTrigger id="executionFrequency" data-testid="select-execution-frequency">
+                    <SelectValue placeholder="Frequenz wählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="weekly">Wöchentlich</SelectItem>
+                    <SelectItem value="monthly">Monatlich</SelectItem>
+                    <SelectItem value="quarterly">Quartalsweise</SelectItem>
+                    <SelectItem value="yearly">Jährlich</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Bestimmt, welche Zeitraum-Angaben bei der Ausführung erforderlich sind.
+                </p>
               </div>
             </CardContent>
           </Card>
