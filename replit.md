@@ -70,11 +70,15 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
   - showProcessExecutions: boolean (Ausgeführte Prozesse)
 
 ### Prozesse
-- id, mandantId, name, description, inputFileCount, inputFileSlots (JSONB), transformationSteps
+- id, mandantId, name, description, inputFileCount, inputFileSlots (JSONB), transformationSteps, executionFrequency
 - inputFileSlots: Array von benannten Datei-Slots mit { id, name, description, required }
+- executionFrequency: weekly | monthly | quarterly | yearly (Standard: monthly)
 
 ### Prozess-Ausführungen
-- id, processId, mandantId, status, month, year, inputFiles, outputData, transactionCount
+- id, processId, mandantId, status, month, quarter, year, inputFiles, outputData, transactionCount
+- month: Monat (1-12), bei weekly/monthly Ausführungen
+- quarter: Quartal (1-4), bei quarterly Ausführungen
+- year: Jahr (immer gesetzt)
 
 ### Export-Datensätze
 - id, mandantId, processExecutionId, name, format (ascii/datev), exportData
