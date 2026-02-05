@@ -74,6 +74,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { InputFileSlot, OutputFile, Process, Macro } from "@shared/schema";
 
@@ -85,6 +86,7 @@ interface ProcessBuilderPageProps {
 export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { isInternal, isLoading: authLoading } = useAuth();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -285,6 +287,27 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
   const removeMacro = (macroId: string) => {
     setUsedMacroIds(usedMacroIds.filter(id => id !== macroId));
   };
+
+  // External users cannot create or edit processes
+  if (!authLoading && !isInternal) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8">
+        <Card className="max-w-md">
+          <CardContent className="pt-6 text-center">
+            <FileCode className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="font-semibold text-lg mb-2">Keine Berechtigung</h3>
+            <p className="text-muted-foreground mb-4">
+              Das Erstellen und Bearbeiten von Prozessen ist nur internen Benutzern gestattet.
+            </p>
+            <Button onClick={() => navigate("/processes")} data-testid="button-back-to-processes">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Zurück zur Übersicht
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (!mandantId) {
     return (

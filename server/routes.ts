@@ -267,7 +267,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/processes", isAuthenticated, async (req: any, res) => {
+  app.post("/api/processes", isAuthenticated, isInternalOnly, async (req: any, res) => {
     try {
       const userId = req.user!.id;
       console.log("POST /api/processes - req.body:", JSON.stringify(req.body, null, 2));
@@ -313,7 +313,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/processes/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/processes/:id", isAuthenticated, isInternalOnly, async (req: any, res) => {
     try {
       const userId = req.user!.id;
       console.log("PATCH /api/processes - req.body:", JSON.stringify(req.body, null, 2));
@@ -364,7 +364,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/processes/:id", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/processes/:id", isAuthenticated, isInternalOnly, async (req: any, res) => {
     try {
       const userId = req.user!.id;
       const existingProcess = await storage.getProcess(req.params.id);

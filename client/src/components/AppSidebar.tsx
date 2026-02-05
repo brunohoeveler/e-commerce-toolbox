@@ -63,7 +63,7 @@ const menuItems = [
 
 export function AppSidebar({ mandanten, selectedMandant, onSelectMandant }: AppSidebarProps) {
   const [location] = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, isInternal } = useAuth();
 
   return (
     <Sidebar>
@@ -149,49 +149,51 @@ export function AppSidebar({ mandanten, selectedMandant, onSelectMandant }: AppS
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel className="px-4">Administration</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={location === "/mandanten"}
-                  data-testid="nav-mandanten"
-                >
-                  <Link href="/mandanten">
-                    <Building2 className="h-4 w-4" />
-                    <span>Alle Mandate</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={location === "/users"}
-                  data-testid="nav-users"
-                >
-                  <Link href="/users">
-                    <Users className="h-4 w-4" />
-                    <span>Benutzerverwaltung</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={location === "/vorlagen"}
-                  data-testid="nav-vorlagen"
-                >
-                  <Link href="/vorlagen">
-                    <Code className="h-4 w-4" />
-                    <span>Vorlagen</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {isInternal && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="px-4">Administration</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === "/mandanten"}
+                    data-testid="nav-mandanten"
+                  >
+                    <Link href="/mandanten">
+                      <Building2 className="h-4 w-4" />
+                      <span>Alle Mandate</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === "/users"}
+                    data-testid="nav-users"
+                  >
+                    <Link href="/users">
+                      <Users className="h-4 w-4" />
+                      <span>Benutzerverwaltung</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === "/vorlagen"}
+                    data-testid="nav-vorlagen"
+                  >
+                    <Link href="/vorlagen">
+                      <Code className="h-4 w-4" />
+                      <span>Vorlagen</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border p-4">
         <DropdownMenu>

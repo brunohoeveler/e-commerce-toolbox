@@ -52,10 +52,14 @@ export function useAuth() {
     },
   });
 
+  // Helper to check if user has internal/admin privileges
+  const isInternal = user?.profile?.role === "internal" || user?.profile?.role === "admin";
+
   return {
     user,
     isLoading,
     isAuthenticated: !!user,
+    isInternal,
     logout: logoutMutation.mutate,
     isLoggingOut: logoutMutation.isPending,
   };

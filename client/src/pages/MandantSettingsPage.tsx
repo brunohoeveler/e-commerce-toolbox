@@ -26,8 +26,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Mandant, User } from "@shared/schema";
+import type { Mandant } from "@shared/schema";
+
+// Better Auth user type
+interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  image?: string | null;
+}
 
 interface MandantSettingsPageProps {
   mandantId: string | null;
@@ -36,11 +45,12 @@ interface MandantSettingsPageProps {
 
 interface AssignedUser {
   id: string;
-  user: User;
+  user: AuthUser;
 }
 
 export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageProps) {
   const { toast } = useToast();
+  const { isInternal } = useAuth();
   const [showAddUser, setShowAddUser] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   
@@ -183,6 +193,7 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                disabled={!isInternal}
                 data-testid="input-mandant-name"
               />
             </div>
@@ -194,6 +205,7 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                   type="number"
                   value={formData.mandantenNummer}
                   onChange={(e) => setFormData(prev => ({ ...prev, mandantenNummer: parseInt(e.target.value) || 0 }))}
+                  disabled={!isInternal}
                   data-testid="input-mandanten-nummer"
                 />
               </div>
@@ -204,6 +216,7 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                   type="number"
                   value={formData.beraterNummer}
                   onChange={(e) => setFormData(prev => ({ ...prev, beraterNummer: parseInt(e.target.value) || 0 }))}
+                  disabled={!isInternal}
                   data-testid="input-berater-nummer"
                 />
               </div>
@@ -216,6 +229,7 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                   type="number"
                   value={formData.sachkontenLaenge}
                   onChange={(e) => setFormData(prev => ({ ...prev, sachkontenLaenge: parseInt(e.target.value) || 4 }))}
+                  disabled={!isInternal}
                   data-testid="input-sachkonten-laenge"
                 />
               </div>
@@ -226,144 +240,149 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                   type="number"
                   value={formData.sachkontenRahmen}
                   onChange={(e) => setFormData(prev => ({ ...prev, sachkontenRahmen: parseInt(e.target.value) || 3 }))}
+                  disabled={!isInternal}
                   data-testid="input-sachkonten-rahmen"
                 />
               </div>
             </div>
-            <Button
-              onClick={() => updateMutation.mutate()}
-              disabled={updateMutation.isPending}
-              className="w-full"
-              data-testid="button-save-mandant"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              Änderungen speichern
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Benutzerberechtigungen
-                </CardTitle>
-                <CardDescription>
-                  Verwalten Sie den Zugriff auf dieses Mandat
-                </CardDescription>
-              </div>
-              <Dialog open={showAddUser} onOpenChange={setShowAddUser}>
-                <DialogTrigger asChild>
-                  <Button size="sm" data-testid="button-add-user">
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Hinzufügen
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Benutzer hinzufügen</DialogTitle>
-                    <DialogDescription>
-                      Geben Sie die E-Mail-Adresse des Benutzers ein
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="userEmail">E-Mail-Adresse</Label>
-                      <Input
-                        id="userEmail"
-                        type="email"
-                        placeholder="benutzer@example.com"
-                        value={userEmail}
-                        onChange={(e) => setUserEmail(e.target.value)}
-                        data-testid="input-user-email"
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowAddUser(false)}
-                    >
-                      Abbrechen
-                    </Button>
-                    <Button
-                      onClick={() => assignUserMutation.mutate()}
-                      disabled={!userEmail || assignUserMutation.isPending}
-                      data-testid="button-confirm-add-user"
-                    >
-                      Hinzufügen
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {usersLoading ? (
-              <div className="space-y-3">
-                {[1, 2].map((i) => (
-                  <Skeleton key={i} className="h-16 w-full" />
-                ))}
-              </div>
-            ) : assignedUsers && assignedUsers.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Benutzer</TableHead>
-                    <TableHead>Rolle</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {assignedUsers.map((assignment) => (
-                    <TableRow key={assignment.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={assignment.user.profileImageUrl || undefined} />
-                            <AvatarFallback>
-                              {assignment.user.firstName?.[0] || assignment.user.email?.[0] || "U"}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium">
-                              {assignment.user.firstName} {assignment.user.lastName}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {assignment.user.email}
-                            </p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">Extern</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeUserMutation.mutate(assignment.user.id)}
-                          disabled={removeUserMutation.isPending}
-                          data-testid={`button-remove-user-${assignment.user.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>Keine externen Benutzer</p>
-                <p className="text-sm">Fügen Sie Benutzer hinzu, um ihnen Zugriff zu gewähren</p>
-              </div>
+            {isInternal && (
+              <Button
+                onClick={() => updateMutation.mutate()}
+                disabled={updateMutation.isPending}
+                className="w-full"
+                data-testid="button-save-mandant"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Änderungen speichern
+              </Button>
             )}
           </CardContent>
         </Card>
+
+        {isInternal && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Benutzerberechtigungen
+                  </CardTitle>
+                  <CardDescription>
+                    Verwalten Sie den Zugriff auf dieses Mandat
+                  </CardDescription>
+                </div>
+                <Dialog open={showAddUser} onOpenChange={setShowAddUser}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" data-testid="button-add-user">
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Hinzufügen
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Benutzer hinzufügen</DialogTitle>
+                      <DialogDescription>
+                        Geben Sie die E-Mail-Adresse des Benutzers ein
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="userEmail">E-Mail-Adresse</Label>
+                        <Input
+                          id="userEmail"
+                          type="email"
+                          placeholder="benutzer@example.com"
+                          value={userEmail}
+                          onChange={(e) => setUserEmail(e.target.value)}
+                          data-testid="input-user-email"
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowAddUser(false)}
+                      >
+                        Abbrechen
+                      </Button>
+                      <Button
+                        onClick={() => assignUserMutation.mutate()}
+                        disabled={!userEmail || assignUserMutation.isPending}
+                        data-testid="button-confirm-add-user"
+                      >
+                        Hinzufügen
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {usersLoading ? (
+                <div className="space-y-3">
+                  {[1, 2].map((i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              ) : assignedUsers && assignedUsers.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Benutzer</TableHead>
+                      <TableHead>Rolle</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {assignedUsers.map((assignment) => (
+                      <TableRow key={assignment.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={assignment.user.image || undefined} />
+                              <AvatarFallback>
+                                {assignment.user.name?.[0] || assignment.user.email?.[0] || "U"}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium">
+                                {assignment.user.name}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {assignment.user.email}
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">Extern</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeUserMutation.mutate(assignment.user.id)}
+                            disabled={removeUserMutation.isPending}
+                            data-testid={`button-remove-user-${assignment.user.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>Keine externen Benutzer</p>
+                  <p className="text-sm">Fügen Sie Benutzer hinzu, um ihnen Zugriff zu gewähren</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

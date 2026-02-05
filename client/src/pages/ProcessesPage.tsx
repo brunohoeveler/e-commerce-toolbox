@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Process } from "@shared/schema";
 
@@ -25,6 +26,7 @@ interface ProcessesPageProps {
 export function ProcessesPage({ mandantId }: ProcessesPageProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { isInternal } = useAuth();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [processToDelete, setProcessToDelete] = useState<Process | null>(null);
 
@@ -112,12 +114,19 @@ export function ProcessesPage({ mandantId }: ProcessesPageProps) {
             Verwalten Sie Ihre Datentransformationsprozesse
           </p>
         </div>
-        <Link href="/processes/new">
-          <Button data-testid="button-new-process">
+        {isInternal ? (
+          <Link href="/processes/new">
+            <Button data-testid="button-new-process">
+              <Plus className="h-4 w-4 mr-2" />
+              Neuen Prozess anlegen
+            </Button>
+          </Link>
+        ) : (
+          <Button disabled data-testid="button-new-process" title="Nur für interne Benutzer">
             <Plus className="h-4 w-4 mr-2" />
             Neuen Prozess anlegen
           </Button>
-        </Link>
+        )}
       </div>
 
       {isLoading ? (
@@ -160,19 +169,23 @@ export function ProcessesPage({ mandantId }: ProcessesPageProps) {
                     size="sm"
                     variant="outline"
                     onClick={(e) => handleEditClick(e, process.id)}
+                    disabled={!isInternal}
+                    title={!isInternal ? "Nur für interne Benutzer" : undefined}
                     data-testid={`button-edit-process-${process.id}`}
                   >
                     <Pencil className="h-4 w-4 mr-1" />
                     Bearbeiten
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={(e) => handleDeleteClick(e, process)}
-                    data-testid={`button-delete-process-${process.id}`}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  {isInternal && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => handleDeleteClick(e, process)}
+                      data-testid={`button-delete-process-${process.id}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -184,14 +197,18 @@ export function ProcessesPage({ mandantId }: ProcessesPageProps) {
             <FileCode className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="font-semibold text-lg mb-2">Keine Prozesse vorhanden</h3>
             <p className="text-muted-foreground mb-4">
-              Erstellen Sie Ihren ersten Prozess, um Daten zu transformieren.
+              {isInternal 
+                ? "Erstellen Sie Ihren ersten Prozess, um Daten zu transformieren."
+                : "Es wurden noch keine Prozesse für dieses Mandat erstellt."}
             </p>
-            <Link href="/processes/new">
-              <Button data-testid="button-create-first-process">
-                <Plus className="h-4 w-4 mr-2" />
-                Ersten Prozess erstellen
-              </Button>
-            </Link>
+            {isInternal && (
+              <Link href="/processes/new">
+                <Button data-testid="button-create-first-process">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ersten Prozess erstellen
+                </Button>
+              </Link>
+            )}
           </CardContent>
         </Card>
       )}
