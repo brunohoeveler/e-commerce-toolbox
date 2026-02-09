@@ -26,6 +26,7 @@ export interface DashboardConfig {
   showRevenueByCountry: boolean;
   showRevenueByCurrency: boolean;
   showProcessExecutions: boolean;
+  showProcessTodos: boolean;
 }
 
 export const defaultDashboardConfig: DashboardConfig = {
@@ -35,6 +36,7 @@ export const defaultDashboardConfig: DashboardConfig = {
   showRevenueByCountry: true,
   showRevenueByCurrency: true,
   showProcessExecutions: true,
+  showProcessTodos: true,
 };
 
 export const mandanten = pgTable("mandanten", {
