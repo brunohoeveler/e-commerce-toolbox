@@ -390,6 +390,20 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                     Ausgeführte Prozesse diesen Monat / dieses Jahr
                   </Label>
                 </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="showProcessTodos"
+                    checked={dashboardConfig.showProcessTodos}
+                    onCheckedChange={(checked) =>
+                      setDashboardConfig(prev => ({ ...prev, showProcessTodos: !!checked }))
+                    }
+                    disabled={!isInternal}
+                    data-testid="checkbox-process-todos"
+                  />
+                  <Label htmlFor="showProcessTodos" className="font-normal cursor-pointer">
+                    Prozess-Aufgaben und Fortschritt (To-Do-Liste)
+                  </Label>
+                </div>
               </div>
             </div>
 

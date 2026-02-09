@@ -1,12 +1,95 @@
-import { Calendar, TrendingUp, Globe, DollarSign, CreditCard, PlayCircle } from "lucide-react";
+import { useMemo } from "react";
+import { Calendar, TrendingUp, Globe, DollarSign, CreditCard, PlayCircle, CheckCircle2, Circle, ListTodo } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { useQuery } from "@tanstack/react-query";
-import type { Mandant, DashboardConfig } from "@shared/schema";
+import type { Mandant, DashboardConfig, Process, ProcessExecution } from "@shared/schema";
 import { defaultDashboardConfig } from "@shared/schema";
 
 interface DashboardPageProps {
   mandantId: string | null;
+}
+
+function getCurrentQuarter(): number {
+  return Math.ceil((new Date().getMonth() + 1) / 3);
+}
+
+function getWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+interface ProcessTodo {
+  process: Process;
+  completed: boolean;
+  lastExecution?: ProcessExecution;
+}
+
+function computeProcessTodos(
+  processes: Process[],
+  executions: ProcessExecution[],
+): ProcessTodo[] {
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const currentQuarter = getCurrentQuarter();
+  const currentWeek = getWeekNumber(now);
+
+  return processes.map((process) => {
+    const frequency = (process as any).executionFrequency || "monthly";
+
+    const completedExecution = executions.find((e) => {
+      if (e.processId !== process.id) return false;
+      if (e.status !== "completed") return false;
+
+      switch (frequency) {
+        case "weekly":
+          if (!e.executedAt) return false;
+          const execDate = new Date(e.executedAt);
+          return (
+            getWeekNumber(execDate) === currentWeek &&
+            execDate.getFullYear() === currentYear
+          );
+        case "monthly":
+          return e.month === currentMonth && e.year === currentYear;
+        case "quarterly":
+          return e.quarter === currentQuarter && e.year === currentYear;
+        case "yearly":
+          return e.year === currentYear;
+        default:
+          return e.month === currentMonth && e.year === currentYear;
+      }
+    });
+
+    return {
+      process,
+      completed: !!completedExecution,
+      lastExecution: completedExecution,
+    };
+  });
+}
+
+function getFrequencyLabel(frequency: string): string {
+  switch (frequency) {
+    case "weekly": return "Wöchentlich";
+    case "monthly": return "Monatlich";
+    case "quarterly": return "Quartalsweise";
+    case "yearly": return "Jährlich";
+    default: return "Monatlich";
+  }
+}
+
+function getCurrentPeriodLabel(): string {
+  const now = new Date();
+  const monthNames = [
+    "Januar", "Februar", "März", "April", "Mai", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "Dezember"
+  ];
+  return `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
 }
 
 export function DashboardPage({ mandantId }: DashboardPageProps) {
@@ -15,33 +98,41 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
   });
 
   const mandant = mandanten?.find(m => m.id === mandantId);
-  const config: DashboardConfig = mandant?.dashboardConfig || defaultDashboardConfig;
+  const config: DashboardConfig = {
+    ...defaultDashboardConfig,
+    ...(mandant?.dashboardConfig || {}),
+  };
 
-  const { data: executions } = useQuery<any[]>({
-    queryKey: ["/api/process-executions", mandantId],
-    queryFn: async () => {
-      const res = await fetch(`/api/process-executions?mandantId=${mandantId}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to fetch executions");
-      return res.json();
-    },
-    enabled: !!mandantId && config.showProcessExecutions,
+  const { data: executions } = useQuery<ProcessExecution[]>({
+    queryKey: [`/api/process-executions?mandantId=${mandantId}`],
+    enabled: !!mandantId && (config.showProcessExecutions || config.showProcessTodos),
+  });
+
+  const { data: processes } = useQuery<Process[]>({
+    queryKey: [`/api/processes?mandantId=${mandantId}`],
+    enabled: !!mandantId && config.showProcessTodos,
   });
 
   const now = new Date();
-  const currentMonth = now.getMonth();
+  const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
 
   const executionsThisMonth = executions?.filter(e => {
-    const date = new Date(e.executedAt);
-    return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+    return e.month === currentMonth && e.year === currentYear;
   }) || [];
 
   const executionsThisYear = executions?.filter(e => {
-    const date = new Date(e.executedAt);
-    return date.getFullYear() === currentYear;
+    return e.year === currentYear;
   }) || [];
+
+  const processTodos = useMemo(() => {
+    if (!processes || !executions) return [];
+    return computeProcessTodos(processes, executions);
+  }, [processes, executions]);
+
+  const completedCount = processTodos.filter(t => t.completed).length;
+  const totalCount = processTodos.length;
+  const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   if (!mandantId) {
     return (
@@ -63,11 +154,12 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                        config.showRevenueByPlatform || 
                        config.showRevenueByCountry || 
                        config.showRevenueByCurrency || 
-                       config.showProcessExecutions;
+                       config.showProcessExecutions ||
+                       config.showProcessTodos;
 
   return (
     <div className="flex-1 overflow-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground">
@@ -88,92 +180,165 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {config.showTotalRevenue && (
-            <Card data-testid="card-total-revenue">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Gesamtumsatz</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+        <>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {config.showTotalRevenue && (
+              <Card data-testid="card-total-revenue">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Gesamtumsatz</CardTitle>
+                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">€ 0,00</div>
+                  <p className="text-xs text-muted-foreground">
+                    {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {config.showRevenueByPlatform && (
+              <Card data-testid="card-revenue-platform">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Umsatz nach Plattform</CardTitle>
+                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-sm text-muted-foreground">
+                    Keine Daten verfügbar
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {config.showRevenueByCountry && (
+              <Card data-testid="card-revenue-country">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Umsatz nach Ländern</CardTitle>
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-sm text-muted-foreground">
+                    Keine Daten verfügbar
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {config.showRevenueByCurrency && (
+              <Card data-testid="card-revenue-currency">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Umsatz nach Währungen</CardTitle>
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-sm text-muted-foreground">
+                    Keine Daten verfügbar
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {config.showProcessExecutions && (
+              <Card data-testid="card-process-executions">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Ausgeführte Prozesse</CardTitle>
+                  <PlayCircle className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {config.viewMode === "monthly" 
+                      ? executionsThisMonth.length 
+                      : executionsThisYear.length}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {config.showProcessTodos && totalCount > 0 && (
+              <Card data-testid="card-process-progress">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Fortschritt</CardTitle>
+                  <ListTodo className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{completedCount} / {totalCount}</div>
+                  <Progress value={progressPercent} className="mt-2 h-2" data-testid="progress-bar" />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Prozesse in der aktuellen Periode abgeschlossen
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {config.showProcessTodos && processTodos.length > 0 && (
+            <Card data-testid="card-process-todos">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+                <CardTitle className="text-sm font-medium">Prozess-Aufgaben — {getCurrentPeriodLabel()}</CardTitle>
+                <Badge variant="secondary" className="text-xs" data-testid="badge-todo-progress">
+                  {completedCount}/{totalCount} erledigt
+                </Badge>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">€ 0,00</div>
-                <p className="text-xs text-muted-foreground">
-                  {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
-                </p>
+                <div className="space-y-3">
+                  {processTodos.map((todo) => (
+                    <div
+                      key={todo.process.id}
+                      className="flex items-center gap-3"
+                      data-testid={`todo-process-${todo.process.id}`}
+                    >
+                      {todo.completed ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-400 shrink-0" data-testid={`icon-completed-${todo.process.id}`} />
+                      ) : (
+                        <Circle className="h-5 w-5 text-muted-foreground shrink-0" data-testid={`icon-pending-${todo.process.id}`} />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${todo.completed ? "line-through text-muted-foreground" : ""}`}>
+                          {todo.process.name}
+                        </p>
+                        {todo.process.description && (
+                          <p className="text-xs text-muted-foreground truncate">
+                            {todo.process.description}
+                          </p>
+                        )}
+                      </div>
+                      <Badge variant={todo.completed ? "secondary" : "outline"} className="shrink-0 text-xs">
+                        {getFrequencyLabel((todo.process as any).executionFrequency || "monthly")}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )}
 
-          {config.showRevenueByPlatform && (
-            <Card data-testid="card-revenue-platform">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Umsatz nach Plattform</CardTitle>
-                <CreditCard className="h-4 w-4 text-muted-foreground" />
+          {config.showProcessTodos && processTodos.length === 0 && processes && (
+            <Card data-testid="card-process-todos-empty">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+                <CardTitle className="text-sm font-medium">Prozess-Aufgaben</CardTitle>
+                <ListTodo className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-sm text-muted-foreground">
-                  Keine Daten verfügbar
+                <div className="text-center py-4 text-muted-foreground">
+                  <p className="text-sm">Keine Prozesse für dieses Mandat vorhanden</p>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
-                </p>
               </CardContent>
             </Card>
           )}
-
-          {config.showRevenueByCountry && (
-            <Card data-testid="card-revenue-country">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Umsatz nach Ländern</CardTitle>
-                <Globe className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm text-muted-foreground">
-                  Keine Daten verfügbar
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {config.showRevenueByCurrency && (
-            <Card data-testid="card-revenue-currency">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Umsatz nach Währungen</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm text-muted-foreground">
-                  Keine Daten verfügbar
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {config.showProcessExecutions && (
-            <Card data-testid="card-process-executions">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Ausgeführte Prozesse</CardTitle>
-                <PlayCircle className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {config.viewMode === "monthly" 
-                    ? executionsThisMonth.length 
-                    : executionsThisYear.length}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+        </>
       )}
     </div>
   );
