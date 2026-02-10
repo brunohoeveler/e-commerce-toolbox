@@ -20,23 +20,27 @@ export const userProfilesRelations = relations(userProfiles, ({ many }) => ({
 }));
 
 export interface DashboardConfig {
-  viewMode: "monthly" | "yearly";
   showTotalRevenue: boolean;
   showRevenueByPlatform: boolean;
   showRevenueByCountry: boolean;
   showRevenueByCurrency: boolean;
   showProcessExecutions: boolean;
   showProcessTodos: boolean;
+  showTransactions: boolean;
+  showRevenue: boolean;
+  showPayments: boolean;
 }
 
 export const defaultDashboardConfig: DashboardConfig = {
-  viewMode: "monthly",
   showTotalRevenue: true,
   showRevenueByPlatform: true,
   showRevenueByCountry: true,
   showRevenueByCurrency: true,
   showProcessExecutions: true,
   showProcessTodos: true,
+  showTransactions: true,
+  showRevenue: true,
+  showPayments: true,
 };
 
 export const mandanten = pgTable("mandanten", {
@@ -77,6 +81,7 @@ export const mandantUserAssignmentsRelations = relations(mandantUserAssignments,
 
 export const processStatusEnum = pgEnum("process_status", ["pending", "completed", "failed"]);
 export const executionFrequencyEnum = pgEnum("execution_frequency", ["weekly", "monthly", "quarterly", "yearly"]);
+export const processTypeEnum = pgEnum("process_type", ["umsatz", "zahlung"]);
 
 export const macros = pgTable("macros", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -111,6 +116,7 @@ export const processes = pgTable("processes", {
   mandantId: varchar("mandant_id").notNull(),
   name: text("name").notNull(),
   description: text("description"),
+  processType: processTypeEnum("process_type").notNull().default("umsatz"),
   executionFrequency: executionFrequencyEnum("execution_frequency").notNull().default("monthly"),
   inputFileCount: integer("input_file_count").notNull().default(1),
   inputFileSlots: jsonb("input_file_slots").notNull().default([]),
