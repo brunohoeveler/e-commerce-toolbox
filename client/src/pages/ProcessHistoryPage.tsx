@@ -25,6 +25,7 @@ interface ProcessHistoryPageProps {
 
 interface ExecutionWithProcess extends ProcessExecution {
   processName?: string;
+  processType?: "umsatz" | "zahlung";
 }
 
 interface Attachment {
@@ -80,10 +81,14 @@ export function ProcessHistoryPage({ mandantId }: ProcessHistoryPageProps) {
     },
   });
 
-  const executionsWithProcess: ExecutionWithProcess[] = (executions || []).map(exec => ({
-    ...exec,
-    processName: processes?.find(p => p.id === exec.processId)?.name || "Unbekannter Prozess",
-  })).sort((a, b) => {
+  const executionsWithProcess: ExecutionWithProcess[] = (executions || []).map(exec => {
+    const proc = processes?.find(p => p.id === exec.processId);
+    return {
+      ...exec,
+      processName: proc?.name || "Unbekannter Prozess",
+      processType: ((proc as any)?.processType as "umsatz" | "zahlung") || "umsatz",
+    };
+  }).sort((a, b) => {
     const dateA = a.executedAt ? new Date(a.executedAt).getTime() : 0;
     const dateB = b.executedAt ? new Date(b.executedAt).getTime() : 0;
     return dateB - dateA;
@@ -234,16 +239,31 @@ export function ProcessHistoryPage({ mandantId }: ProcessHistoryPageProps) {
                   <div className="flex items-center gap-4 flex-1 min-w-0">
                     <FileText className="h-8 w-8 text-muted-foreground flex-shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-semibold truncate">{execution.processName}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold truncate">{execution.processName}</h3>
+                        <Badge variant="outline" className="text-xs" data-testid={`badge-type-${execution.id}`}>
+                          {execution.processType === "zahlung" ? "Zahlung" : "Umsatz"}
+                        </Badge>
+                      </div>
                       <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          {getMonthName(execution.month)} {execution.year}
+                          {execution.month ? `${getMonthName(execution.month)} ` : ""}{execution.year}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           {formatDate(execution.executedAt)}
                         </span>
+                        {execution.transactionCount > 0 && (
+                          <span className="text-foreground font-medium">
+                            {execution.transactionCount} Buchungen
+                          </span>
+                        )}
+                        {execution.totalAmount && (
+                          <span className="text-foreground font-medium">
+                            {parseFloat(execution.totalAmount).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -260,15 +280,21 @@ export function ProcessHistoryPage({ mandantId }: ProcessHistoryPageProps) {
 
                 {isExpanded && (
                   <CardContent className="border-t pt-4 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                       <div>
-                        <span className="text-muted-foreground">Transaktionen:</span>
+                        <span className="text-muted-foreground">Typ:</span>
+                        <span className="ml-2 font-medium">{execution.processType === "zahlung" ? "Zahlung" : "Umsatz"}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Buchungen:</span>
                         <span className="ml-2 font-medium">{execution.transactionCount || 0}</span>
                       </div>
                       {execution.totalAmount && (
                         <div>
                           <span className="text-muted-foreground">Gesamtbetrag:</span>
-                          <span className="ml-2 font-medium">{execution.totalAmount}</span>
+                          <span className="ml-2 font-medium">
+                            {parseFloat(execution.totalAmount).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR
+                          </span>
                         </div>
                       )}
                       <div>

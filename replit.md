@@ -62,15 +62,20 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 ### Mandanten
 - id, name, mandantenNummer, beraterNummer, sachkontenLaenge, sachkontenRahmen, dashboardConfig (JSONB)
 - dashboardConfig: Konfiguration der Dashboard-Anzeige pro Mandant
-  - viewMode: "monthly" | "yearly" (Ansichtsmodus)
+  - showRevenue: boolean (Umsatz-Karte aus Umsatz-Prozessen)
+  - showPayments: boolean (Zahlungs-Karte aus Zahlungs-Prozessen)
+  - showTransactions: boolean (Buchungen/Transaktionsanzahl)
   - showTotalRevenue: boolean (Gesamtumsatz anzeigen)
   - showRevenueByPlatform: boolean (Umsatz nach Plattform)
   - showRevenueByCountry: boolean (Umsatz nach Ländern)
   - showRevenueByCurrency: boolean (Umsatz nach Währungen)
   - showProcessExecutions: boolean (Ausgeführte Prozesse)
+  - showProcessTodos: boolean (Prozess-Aufgaben)
+  - Hinweis: viewMode (Monats-/Jahresansicht) wird lokal im Dashboard umgeschaltet, nicht in der Config gespeichert
 
 ### Prozesse
-- id, mandantId, name, description, inputFileCount, inputFileSlots (JSONB), transformationSteps, executionFrequency
+- id, mandantId, name, description, processType, inputFileCount, inputFileSlots (JSONB), transformationSteps, executionFrequency
+- processType: "umsatz" | "zahlung" (Standard: umsatz) - bestimmt ob der Prozess Umsätze oder Zahlungen verarbeitet
 - inputFileSlots: Array von benannten Datei-Slots mit { id, name, description, required }
 - executionFrequency: weekly | monthly | quarterly | yearly (Standard: monthly)
 

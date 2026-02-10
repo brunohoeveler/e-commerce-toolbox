@@ -1,7 +1,8 @@
-import { useMemo } from "react";
-import { Calendar, TrendingUp, Globe, DollarSign, CreditCard, PlayCircle, CheckCircle2, Circle, ListTodo } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Calendar, TrendingUp, Globe, DollarSign, CreditCard, PlayCircle, CheckCircle2, Circle, ListTodo, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useQuery } from "@tanstack/react-query";
 import type { Mandant, DashboardConfig, Process, ProcessExecution } from "@shared/schema";
@@ -92,7 +93,13 @@ function getCurrentPeriodLabel(): string {
   return `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
 }
 
+function formatCurrency(value: number): string {
+  return value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export function DashboardPage({ mandantId }: DashboardPageProps) {
+  const [viewMode, setViewMode] = useState<"monthly" | "yearly">("monthly");
+
   const { data: mandanten } = useQuery<Mandant[]>({
     queryKey: ["/api/mandanten"],
   });
@@ -103,19 +110,31 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
     ...(mandant?.dashboardConfig || {}),
   };
 
+  const needsExecutions = config.showProcessExecutions || config.showProcessTodos || 
+                          config.showTransactions || config.showRevenue || config.showPayments ||
+                          config.showTotalRevenue;
+
   const { data: executions } = useQuery<ProcessExecution[]>({
     queryKey: [`/api/process-executions?mandantId=${mandantId}`],
-    enabled: !!mandantId && (config.showProcessExecutions || config.showProcessTodos),
+    enabled: !!mandantId && needsExecutions,
   });
 
   const { data: processes } = useQuery<Process[]>({
     queryKey: [`/api/processes?mandantId=${mandantId}`],
-    enabled: !!mandantId && config.showProcessTodos,
+    enabled: !!mandantId && (config.showProcessTodos || config.showRevenue || config.showPayments || config.showTransactions || config.showTotalRevenue),
   });
 
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
+
+  const filteredExecutions = useMemo(() => {
+    if (!executions) return [];
+    if (viewMode === "monthly") {
+      return executions.filter(e => e.month === currentMonth && e.year === currentYear && e.status === "completed");
+    }
+    return executions.filter(e => e.year === currentYear && e.status === "completed");
+  }, [executions, viewMode, currentMonth, currentYear]);
 
   const executionsThisMonth = executions?.filter(e => {
     return e.month === currentMonth && e.year === currentYear;
@@ -124,6 +143,32 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
   const executionsThisYear = executions?.filter(e => {
     return e.year === currentYear;
   }) || [];
+
+  const metrics = useMemo(() => {
+    if (!processes || !filteredExecutions.length) {
+      return { totalRevenue: 0, totalPayments: 0, totalTransactions: 0 };
+    }
+
+    const processMap = new Map(processes.map(p => [p.id, p]));
+    let totalRevenue = 0;
+    let totalPayments = 0;
+    let totalTransactions = 0;
+
+    for (const exec of filteredExecutions) {
+      const proc = processMap.get(exec.processId);
+      const processType = (proc as any)?.processType || "umsatz";
+      const amount = exec.totalAmount ? parseFloat(exec.totalAmount) : 0;
+      
+      if (processType === "umsatz") {
+        totalRevenue += amount;
+      } else if (processType === "zahlung") {
+        totalPayments += amount;
+      }
+      totalTransactions += exec.transactionCount || 0;
+    }
+
+    return { totalRevenue, totalPayments, totalTransactions };
+  }, [processes, filteredExecutions]);
 
   const processTodos = useMemo(() => {
     if (!processes || !executions) return [];
@@ -155,7 +200,12 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                        config.showRevenueByCountry || 
                        config.showRevenueByCurrency || 
                        config.showProcessExecutions ||
-                       config.showProcessTodos;
+                       config.showProcessTodos ||
+                       config.showTransactions ||
+                       config.showRevenue ||
+                       config.showPayments;
+
+  const periodLabel = viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr";
 
   return (
     <div className="flex-1 overflow-auto p-6 space-y-6">
@@ -166,9 +216,24 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
             Übersicht für {mandant?.name || "das ausgewählte Mandat"}
           </p>
         </div>
-        <Badge variant="secondary" data-testid="badge-view-mode">
-          {config.viewMode === "monthly" ? "Monatsansicht" : "Jahresansicht"}
-        </Badge>
+        <div className="flex items-center gap-1 rounded-md border p-1" data-testid="view-mode-switcher">
+          <Button
+            variant={viewMode === "monthly" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("monthly")}
+            data-testid="button-view-monthly"
+          >
+            Monat
+          </Button>
+          <Button
+            variant={viewMode === "yearly" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("yearly")}
+            data-testid="button-view-yearly"
+          >
+            Jahr
+          </Button>
+        </div>
       </div>
 
       {!hasAnyWidget ? (
@@ -182,6 +247,57 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {config.showRevenue && (
+              <Card data-testid="card-revenue">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Umsatz</CardTitle>
+                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="text-revenue-value">
+                    {formatCurrency(metrics.totalRevenue)} EUR
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {periodLabel} (aus Umsatz-Prozessen)
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {config.showPayments && (
+              <Card data-testid="card-payments">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Zahlungen</CardTitle>
+                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="text-payments-value">
+                    {formatCurrency(metrics.totalPayments)} EUR
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {periodLabel} (aus Zahlungs-Prozessen)
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {config.showTransactions && (
+              <Card data-testid="card-transactions">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Buchungen</CardTitle>
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="text-transactions-value">
+                    {metrics.totalTransactions.toLocaleString("de-DE")}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {periodLabel}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
             {config.showTotalRevenue && (
               <Card data-testid="card-total-revenue">
                 <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
@@ -189,9 +305,11 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">€ 0,00</div>
+                  <div className="text-2xl font-bold" data-testid="text-total-revenue-value">
+                    {formatCurrency(metrics.totalRevenue)} EUR
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
+                    {periodLabel}
                   </p>
                 </CardContent>
               </Card>
@@ -208,7 +326,7 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                     Keine Daten verfügbar
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
+                    {periodLabel}
                   </p>
                 </CardContent>
               </Card>
@@ -225,7 +343,7 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                     Keine Daten verfügbar
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
+                    {periodLabel}
                   </p>
                 </CardContent>
               </Card>
@@ -242,7 +360,7 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                     Keine Daten verfügbar
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
+                    {periodLabel}
                   </p>
                 </CardContent>
               </Card>
@@ -256,12 +374,12 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {config.viewMode === "monthly" 
+                    {viewMode === "monthly" 
                       ? executionsThisMonth.length 
                       : executionsThisYear.length}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {config.viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr"}
+                    {periodLabel}
                   </p>
                 </CardContent>
               </Card>

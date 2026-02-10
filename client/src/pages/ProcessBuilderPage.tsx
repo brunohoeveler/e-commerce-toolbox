@@ -90,6 +90,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [processType, setProcessType] = useState<"umsatz" | "zahlung">("umsatz");
   const [executionFrequency, setExecutionFrequency] = useState<"weekly" | "monthly" | "quarterly" | "yearly">("monthly");
   const [inputFileSlots, setInputFileSlots] = useState<InputFileSlot[]>([]);
   const [pythonCode, setPythonCode] = useState(`# Verfügbare Variablen basierend auf Input-Dateien:
@@ -137,6 +138,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
     if (existingProcess) {
       setName(existingProcess.name);
       setDescription(existingProcess.description || "");
+      setProcessType((existingProcess as any).processType || "umsatz");
       setExecutionFrequency((existingProcess as any).executionFrequency || "monthly");
       setInputFileSlots(existingProcess.inputFileSlots as InputFileSlot[] || []);
       setPythonCode(existingProcess.pythonCode || "");
@@ -150,6 +152,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       mandantId: string;
       name: string;
       description: string;
+      processType: "umsatz" | "zahlung";
       executionFrequency: "weekly" | "monthly" | "quarterly" | "yearly";
       inputFileCount: number;
       inputFileSlots: InputFileSlot[];
@@ -271,6 +274,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       mandantId,
       name,
       description,
+      processType,
       executionFrequency,
       inputFileCount: inputFileSlots.length,
       inputFileSlots,
@@ -393,22 +397,41 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                   data-testid="input-process-description"
                 />
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="processType">Prozesstyp</Label>
+                  <Select
+                    value={processType}
+                    onValueChange={(value: "umsatz" | "zahlung") => setProcessType(value)}
+                  >
+                    <SelectTrigger id="processType" data-testid="select-process-type">
+                      <SelectValue placeholder="Typ wählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="umsatz">Umsatz</SelectItem>
+                      <SelectItem value="zahlung">Zahlung</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="executionFrequency">Ausführungsfrequenz</Label>
+                  <Select
+                    value={executionFrequency}
+                    onValueChange={(value: "weekly" | "monthly" | "quarterly" | "yearly") => setExecutionFrequency(value)}
+                  >
+                    <SelectTrigger id="executionFrequency" data-testid="select-execution-frequency">
+                      <SelectValue placeholder="Frequenz wählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weekly">Wöchentlich</SelectItem>
+                      <SelectItem value="monthly">Monatlich</SelectItem>
+                      <SelectItem value="quarterly">Quartalsweise</SelectItem>
+                      <SelectItem value="yearly">Jährlich</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="space-y-2">
-                <Label htmlFor="executionFrequency">Ausführungsfrequenz</Label>
-                <Select
-                  value={executionFrequency}
-                  onValueChange={(value: "weekly" | "monthly" | "quarterly" | "yearly") => setExecutionFrequency(value)}
-                >
-                  <SelectTrigger id="executionFrequency" data-testid="select-execution-frequency">
-                    <SelectValue placeholder="Frequenz wählen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="weekly">Wöchentlich</SelectItem>
-                    <SelectItem value="monthly">Monatlich</SelectItem>
-                    <SelectItem value="quarterly">Quartalsweise</SelectItem>
-                    <SelectItem value="yearly">Jährlich</SelectItem>
-                  </SelectContent>
-                </Select>
                 <p className="text-xs text-muted-foreground">
                   Bestimmt, welche Zeitraum-Angaben bei der Ausführung erforderlich sind.
                 </p>

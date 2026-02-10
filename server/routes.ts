@@ -690,12 +690,43 @@ export async function registerRoutes(
         rowCount: firstOutput.row_count,
       } : null;
 
+      // Calculate totalAmount from output data (umsatz column + sh column sign)
+      let totalAmount: string | null = null;
+      if (firstOutput?.content && firstOutput.columns) {
+        try {
+          const csvContent = Buffer.from(firstOutput.content, 'base64').toString('utf-8');
+          const lines = csvContent.split('\n').filter(l => l.trim());
+          if (lines.length > 1) {
+            const headers = lines[0].split(';').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+            const umsatzIdx = headers.findIndex(h => h === 'umsatz');
+            const shIdx = headers.findIndex(h => h === 'sh');
+            
+            if (umsatzIdx !== -1) {
+              let sum = 0;
+              for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(';').map(c => c.trim().replace(/^"|"$/g, ''));
+                const rawValue = cols[umsatzIdx] || '0';
+                const numValue = parseFloat(rawValue.replace(/\./g, '').replace(',', '.')) || 0;
+                const shValue = (shIdx !== -1 ? cols[shIdx] : '').toUpperCase().trim();
+                const sign = shValue === 'H' ? -1 : 1;
+                sum += numValue * sign;
+              }
+              totalAmount = sum.toFixed(2);
+              console.log(`Calculated totalAmount: ${totalAmount} (from ${lines.length - 1} rows)`);
+            }
+          }
+        } catch (calcError) {
+          console.warn("Error calculating totalAmount from output:", calcError);
+        }
+      }
+
       // Update execution with completed status and output data
       await storage.updateProcessExecution(execution.id, {
         status: "completed",
         completedAt: new Date(),
         transactionCount,
         outputData: outputDataForStorage,
+        totalAmount,
       });
 
       res.json({

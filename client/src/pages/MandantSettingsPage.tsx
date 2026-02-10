@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Dialog,
   DialogContent,
@@ -297,29 +296,50 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-3">
-              <Label>Ansichtsmodus</Label>
-              <RadioGroup
-                value={dashboardConfig.viewMode}
-                onValueChange={(value: "monthly" | "yearly") =>
-                  setDashboardConfig(prev => ({ ...prev, viewMode: value }))
-                }
-                disabled={!isInternal}
-                className="flex gap-4"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="monthly" id="monthly" data-testid="radio-monthly" />
-                  <Label htmlFor="monthly" className="font-normal cursor-pointer">Monatsansicht</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="yearly" id="yearly" data-testid="radio-yearly" />
-                  <Label htmlFor="yearly" className="font-normal cursor-pointer">Jahresansicht</Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            <div className="space-y-3">
               <Label>Dashboard-Elemente</Label>
               <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="showRevenue"
+                    checked={dashboardConfig.showRevenue}
+                    onCheckedChange={(checked) =>
+                      setDashboardConfig(prev => ({ ...prev, showRevenue: !!checked }))
+                    }
+                    disabled={!isInternal}
+                    data-testid="checkbox-revenue"
+                  />
+                  <Label htmlFor="showRevenue" className="font-normal cursor-pointer">
+                    Umsatz (aus Umsatz-Prozessen)
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="showPayments"
+                    checked={dashboardConfig.showPayments}
+                    onCheckedChange={(checked) =>
+                      setDashboardConfig(prev => ({ ...prev, showPayments: !!checked }))
+                    }
+                    disabled={!isInternal}
+                    data-testid="checkbox-payments"
+                  />
+                  <Label htmlFor="showPayments" className="font-normal cursor-pointer">
+                    Zahlungen (aus Zahlungs-Prozessen)
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="showTransactions"
+                    checked={dashboardConfig.showTransactions}
+                    onCheckedChange={(checked) =>
+                      setDashboardConfig(prev => ({ ...prev, showTransactions: !!checked }))
+                    }
+                    disabled={!isInternal}
+                    data-testid="checkbox-transactions"
+                  />
+                  <Label htmlFor="showTransactions" className="font-normal cursor-pointer">
+                    Buchungen (Transaktionsanzahl)
+                  </Label>
+                </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="showTotalRevenue"
@@ -387,7 +407,7 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                     data-testid="checkbox-process-executions"
                   />
                   <Label htmlFor="showProcessExecutions" className="font-normal cursor-pointer">
-                    Ausgeführte Prozesse diesen Monat / dieses Jahr
+                    Ausgeführte Prozesse
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
