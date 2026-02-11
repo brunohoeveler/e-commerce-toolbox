@@ -76,7 +76,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { InputFileSlot, OutputFile, Process, Macro } from "@shared/schema";
+import type { InputFileSlot, OutputFile, Process, Macro, BelegFileSlot, ManualAmountField } from "@shared/schema";
 
 interface ProcessBuilderPageProps {
   mandantId: string | null;
@@ -91,6 +91,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [processType, setProcessType] = useState<"umsatz" | "zahlung">("umsatz");
+  const [inputMode, setInputMode] = useState<"daten" | "beleg">("daten");
   const [executionFrequency, setExecutionFrequency] = useState<"weekly" | "monthly" | "quarterly" | "yearly">("monthly");
   const [inputFileSlots, setInputFileSlots] = useState<InputFileSlot[]>([]);
   const [pythonCode, setPythonCode] = useState(`# Verfügbare Variablen basierend auf Input-Dateien:
@@ -116,6 +117,8 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
 `);
   const [outputFiles, setOutputFiles] = useState<OutputFile[]>([]);
   const [usedMacroIds, setUsedMacroIds] = useState<string[]>([]);
+  const [belegFileSlots, setBelegFileSlots] = useState<BelegFileSlot[]>([]);
+  const [manualAmountFields, setManualAmountFields] = useState<ManualAmountField[]>([]);
 
   // Fetch available macros
   const { data: macros } = useQuery<Macro[]>({
@@ -139,11 +142,14 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       setName(existingProcess.name);
       setDescription(existingProcess.description || "");
       setProcessType((existingProcess as any).processType || "umsatz");
+      setInputMode((existingProcess as any).inputMode || "daten");
       setExecutionFrequency((existingProcess as any).executionFrequency || "monthly");
       setInputFileSlots(existingProcess.inputFileSlots as InputFileSlot[] || []);
       setPythonCode(existingProcess.pythonCode || "");
       setOutputFiles(existingProcess.outputFiles as OutputFile[] || []);
       setUsedMacroIds((existingProcess as any).usedMacroIds || []);
+      setBelegFileSlots((existingProcess as any).belegFileSlots as BelegFileSlot[] || []);
+      setManualAmountFields((existingProcess as any).manualAmountFields as ManualAmountField[] || []);
     }
   }, [existingProcess]);
 
@@ -153,12 +159,15 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       name: string;
       description: string;
       processType: "umsatz" | "zahlung";
+      inputMode: "daten" | "beleg";
       executionFrequency: "weekly" | "monthly" | "quarterly" | "yearly";
       inputFileCount: number;
       inputFileSlots: InputFileSlot[];
       pythonCode: string;
       outputFiles: OutputFile[];
       usedMacroIds: string[];
+      belegFileSlots: BelegFileSlot[];
+      manualAmountFields: ManualAmountField[];
     }) => {
       if (processId) {
         return apiRequest("PATCH", `/api/processes/${processId}`, data);
@@ -209,6 +218,53 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
     );
   };
 
+  const addBelegFileSlot = () => {
+    setBelegFileSlots([
+      ...belegFileSlots,
+      {
+        id: crypto.randomUUID(),
+        label: `Beleg ${belegFileSlots.length + 1}`,
+        description: "",
+        required: true,
+      },
+    ]);
+  };
+
+  const removeBelegFileSlot = (id: string) => {
+    setBelegFileSlots(belegFileSlots.filter((slot) => slot.id !== id));
+  };
+
+  const updateBelegFileSlot = (id: string, updates: Partial<BelegFileSlot>) => {
+    setBelegFileSlots(
+      belegFileSlots.map((slot) =>
+        slot.id === id ? { ...slot, ...updates } : slot
+      )
+    );
+  };
+
+  const addManualAmountField = () => {
+    setManualAmountFields([
+      ...manualAmountFields,
+      {
+        id: crypto.randomUUID(),
+        label: `Betrag ${manualAmountFields.length + 1}`,
+        description: "",
+      },
+    ]);
+  };
+
+  const removeManualAmountField = (id: string) => {
+    setManualAmountFields(manualAmountFields.filter((f) => f.id !== id));
+  };
+
+  const updateManualAmountField = (id: string, updates: Partial<ManualAmountField>) => {
+    setManualAmountFields(
+      manualAmountFields.map((f) =>
+        f.id === id ? { ...f, ...updates } : f
+      )
+    );
+  };
+
   const addOutputFile = () => {
     setOutputFiles([
       ...outputFiles,
@@ -252,22 +308,33 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       return;
     }
 
-    if (inputFileSlots.length === 0) {
-      toast({
-        title: "Fehler",
-        description: "Bitte fügen Sie mindestens eine Input-Datei hinzu.",
-        variant: "destructive",
-      });
-      return;
-    }
+    if (inputMode === "daten") {
+      if (inputFileSlots.length === 0) {
+        toast({
+          title: "Fehler",
+          description: "Bitte fügen Sie mindestens eine Input-Datei hinzu.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    if (outputFiles.length === 0) {
-      toast({
-        title: "Fehler",
-        description: "Bitte definieren Sie mindestens eine Export-Datei.",
-        variant: "destructive",
-      });
-      return;
+      if (outputFiles.length === 0) {
+        toast({
+          title: "Fehler",
+          description: "Bitte definieren Sie mindestens eine Export-Datei.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } else {
+      if (manualAmountFields.length === 0) {
+        toast({
+          title: "Fehler",
+          description: "Bitte fügen Sie mindestens ein Betragsfeld hinzu.",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     saveMutation.mutate({
@@ -275,12 +342,15 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       name,
       description,
       processType,
+      inputMode,
       executionFrequency,
-      inputFileCount: inputFileSlots.length,
-      inputFileSlots,
-      pythonCode,
-      outputFiles,
-      usedMacroIds,
+      inputFileCount: inputMode === "daten" ? inputFileSlots.length : 0,
+      inputFileSlots: inputMode === "daten" ? inputFileSlots : [],
+      pythonCode: inputMode === "daten" ? pythonCode : "",
+      outputFiles: inputMode === "daten" ? outputFiles : [],
+      usedMacroIds: inputMode === "daten" ? usedMacroIds : [],
+      belegFileSlots: inputMode === "beleg" ? belegFileSlots : [],
+      manualAmountFields: inputMode === "beleg" ? manualAmountFields : [],
     });
   };
 
@@ -414,6 +484,28 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                   </Select>
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="inputMode">Eingabemodus</Label>
+                  <Select
+                    value={inputMode}
+                    onValueChange={(value: "daten" | "beleg") => setInputMode(value)}
+                  >
+                    <SelectTrigger id="inputMode" data-testid="select-input-mode">
+                      <SelectValue placeholder="Modus wählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daten">Input Daten</SelectItem>
+                      <SelectItem value="beleg">Beleginput</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {inputMode === "daten"
+                      ? "Dateien hochladen und mit Python-Code transformieren."
+                      : "Belege hochladen und Beträge manuell eingeben."}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
                   <Label htmlFor="executionFrequency">Ausführungsfrequenz</Label>
                   <Select
                     value={executionFrequency}
@@ -431,14 +523,10 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                   </Select>
                 </div>
               </div>
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  Bestimmt, welche Zeitraum-Angaben bei der Ausführung erforderlich sind.
-                </p>
-              </div>
             </CardContent>
           </Card>
 
+          {inputMode === "daten" ? (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle>Input-Dateien</CardTitle>
@@ -495,7 +583,124 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
               )}
             </CardContent>
           </Card>
+          ) : (
+          <>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle>Belegdateien</CardTitle>
+              <Button size="sm" variant="outline" onClick={addBelegFileSlot} data-testid="button-add-beleg-file">
+                <Plus className="h-4 w-4 mr-1" />
+                Hinzufügen
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {belegFileSlots.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Keine Belegdateien definiert. Klicken Sie auf "Hinzufügen".
+                </p>
+              ) : (
+                belegFileSlots.map((slot, index) => (
+                  <div key={slot.id} className="p-4 border rounded-md space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">Beleg {index + 1}</span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeBelegFileSlot(slot.id)}
+                        data-testid={`button-remove-beleg-${index}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Bezeichnung</Label>
+                      <Input
+                        value={slot.label}
+                        onChange={(e) =>
+                          updateBelegFileSlot(slot.id, { label: e.target.value })
+                        }
+                        placeholder="z.B. Rechnung, Kontoauszug"
+                        data-testid={`input-beleg-label-${index}`}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Beschreibung (optional)</Label>
+                      <Input
+                        value={slot.description || ""}
+                        onChange={(e) =>
+                          updateBelegFileSlot(slot.id, { description: e.target.value })
+                        }
+                        placeholder="z.B. PDF der monatlichen Rechnung"
+                        data-testid={`input-beleg-description-${index}`}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
 
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle>Betragsfelder</CardTitle>
+              <Button size="sm" variant="outline" onClick={addManualAmountField} data-testid="button-add-amount-field">
+                <Plus className="h-4 w-4 mr-1" />
+                Hinzufügen
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Definieren Sie Eingabefelder für {processType === "umsatz" ? "Umsatzbeträge" : "Zahlungsbeträge"}, die bei der Ausführung manuell eingetragen werden.
+              </p>
+              {manualAmountFields.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Keine Betragsfelder definiert. Klicken Sie auf "Hinzufügen".
+                </p>
+              ) : (
+                manualAmountFields.map((field, index) => (
+                  <div key={field.id} className="p-4 border rounded-md space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">Feld {index + 1}</span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeManualAmountField(field.id)}
+                        data-testid={`button-remove-amount-${index}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Bezeichnung</Label>
+                      <Input
+                        value={field.label}
+                        onChange={(e) =>
+                          updateManualAmountField(field.id, { label: e.target.value })
+                        }
+                        placeholder="z.B. Nettoumsatz, Gebühren"
+                        data-testid={`input-amount-label-${index}`}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Beschreibung (optional)</Label>
+                      <Input
+                        value={field.description || ""}
+                        onChange={(e) =>
+                          updateManualAmountField(field.id, { description: e.target.value })
+                        }
+                        placeholder="z.B. Gesamtbetrag aus der Rechnung"
+                        data-testid={`input-amount-description-${index}`}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+          </>
+          )}
+
+          {inputMode === "daten" && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle>Export-Dateien</CardTitle>
@@ -592,8 +797,10 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
               )}
             </CardContent>
           </Card>
+          )}
         </div>
 
+        {inputMode === "daten" && (
         <div className="space-y-6">
           {/* Macros Section */}
           {macros && macros.length > 0 && (
@@ -653,9 +860,10 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
             </Card>
           )}
         </div>
+        )}
       </div>
 
-      {/* Python Code Editor - Full Width Below */}
+      {inputMode === "daten" && (
       <div className="mt-6 rounded-lg overflow-hidden border border-[#3c3c3c] shadow-lg">
         {/* Editor Header - Prettier Style */}
         <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-[#3c3c3c]">
@@ -741,6 +949,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, Upload, Play, Download, FileCode, Loader2, Check, X, Calendar } from "lucide-react";
+import { ArrowLeft, Upload, Play, Download, FileCode, Loader2, Check, X, Calendar, FileText, DollarSign } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,17 +16,11 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Process, InputFileSlot, OutputFile } from "@shared/schema";
+import type { Process, InputFileSlot, OutputFile, BelegFileSlot, ManualAmountField } from "@shared/schema";
 
 interface ProcessExecutePageProps {
   mandantId: string | null;
   processId: string;
-}
-
-interface UploadedFile {
-  slotId: string;
-  file: File;
-  uploaded: boolean;
 }
 
 interface ExecutionResult {
@@ -37,6 +31,7 @@ interface ExecutionResult {
     format: string;
     downloadUrl: string;
   }[];
+  totalAmount?: string;
 }
 
 const currentYear = new Date().getFullYear();
@@ -74,6 +69,8 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [uploadedFiles, setUploadedFiles] = useState<Map<string, File>>(new Map());
+  const [belegFiles, setBelegFiles] = useState<Map<string, File>>(new Map());
+  const [manualAmountValues, setManualAmountValues] = useState<Record<string, string>>({});
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>(String(currentMonth));
   const [selectedQuarter, setSelectedQuarter] = useState<string>(String(currentQuarter));
@@ -106,9 +103,12 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
     },
     onSuccess: (data) => {
       setExecutionResult(data);
+      const inputMode = (process as any)?.inputMode || "daten";
       toast({
-        title: "Prozess ausgeführt",
-        description: "Die Transformation wurde erfolgreich durchgeführt.",
+        title: inputMode === "beleg" ? "Beleg erfasst" : "Prozess ausgeführt",
+        description: inputMode === "beleg"
+          ? "Die Belegdaten wurden erfolgreich gespeichert."
+          : "Die Transformation wurde erfolgreich durchgeführt.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/process-executions"] });
     },
@@ -135,6 +135,20 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
     setUploadedFiles(newFiles);
   };
 
+  const handleBelegFileChange = (slotId: string, file: File | null) => {
+    const newFiles = new Map(belegFiles);
+    if (file) {
+      newFiles.set(slotId, file);
+    } else {
+      newFiles.delete(slotId);
+    }
+    setBelegFiles(newFiles);
+  };
+
+  const handleAmountChange = (fieldId: string, value: string) => {
+    setManualAmountValues(prev => ({ ...prev, [fieldId]: value }));
+  };
+
   const handleExecute = () => {
     if (!process) return;
 
@@ -157,14 +171,12 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
       formData.append(`file_${slotId}`, file);
     });
 
-    // Add slot mapping for the backend
     const slotMapping: Record<string, string> = {};
     inputFileSlots.forEach((slot) => {
       slotMapping[slot.id] = slot.variable;
     });
     formData.append("slotMapping", JSON.stringify(slotMapping));
 
-    // Add time period data based on execution frequency
     const executionFrequency = (process as any).executionFrequency || "monthly";
     formData.append("year", selectedYear);
     
@@ -173,7 +185,66 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
     } else if (executionFrequency === "quarterly") {
       formData.append("quarter", selectedQuarter);
     }
-    // For yearly, only year is needed (already added above)
+
+    setExecutionResult(null);
+    executeMutation.mutate(formData);
+  };
+
+  const handleBelegExecute = () => {
+    if (!process) return;
+
+    const belegFileSlots = (process as any).belegFileSlots as BelegFileSlot[] || [];
+    const manualAmountFields = (process as any).manualAmountFields as ManualAmountField[] || [];
+
+    const missingBelege = belegFileSlots.filter(
+      (slot) => slot.required && !belegFiles.has(slot.id)
+    );
+
+    if (missingBelege.length > 0) {
+      toast({
+        title: "Fehlende Belege",
+        description: `Bitte laden Sie alle erforderlichen Belege hoch: ${missingBelege.map((s) => s.label).join(", ")}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const emptyAmounts = manualAmountFields.filter(
+      (field) => !manualAmountValues[field.id]?.trim()
+    );
+
+    if (emptyAmounts.length > 0) {
+      toast({
+        title: "Fehlende Beträge",
+        description: `Bitte füllen Sie alle Betragsfelder aus: ${emptyAmounts.map((f) => f.label).join(", ")}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const formData = new FormData();
+
+    belegFiles.forEach((file, slotId) => {
+      formData.append(`beleg_${slotId}`, file);
+    });
+
+    formData.append("inputMode", "beleg");
+    formData.append("manualAmounts", JSON.stringify(
+      manualAmountFields.map(field => ({
+        fieldId: field.id,
+        label: field.label,
+        value: manualAmountValues[field.id] || "0",
+      }))
+    ));
+
+    const executionFrequency = (process as any).executionFrequency || "monthly";
+    formData.append("year", selectedYear);
+    
+    if (executionFrequency === "weekly" || executionFrequency === "monthly") {
+      formData.append("month", selectedMonth);
+    } else if (executionFrequency === "quarterly") {
+      formData.append("quarter", selectedQuarter);
+    }
 
     setExecutionResult(null);
     executeMutation.mutate(formData);
@@ -219,11 +290,25 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
     );
   }
 
+  const inputMode = (process as any).inputMode || "daten";
   const inputFileSlots = process.inputFileSlots as InputFileSlot[];
   const outputFiles = process.outputFiles as OutputFile[];
+  const belegFileSlots = ((process as any).belegFileSlots || []) as BelegFileSlot[];
+  const manualAmountFields = ((process as any).manualAmountFields || []) as ManualAmountField[];
+  
   const allRequiredFilesUploaded = inputFileSlots
     .filter((slot) => slot.required)
     .every((slot) => uploadedFiles.has(slot.id));
+
+  const allRequiredBelegeUploaded = belegFileSlots
+    .filter((slot) => slot.required)
+    .every((slot) => belegFiles.has(slot.id));
+
+  const allAmountsFilled = manualAmountFields.every(
+    (field) => manualAmountValues[field.id]?.trim()
+  );
+
+  const canExecuteBeleg = allRequiredBelegeUploaded && allAmountsFilled;
 
   return (
     <div className="flex-1 overflow-auto p-6 space-y-6">
@@ -233,13 +318,17 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold">{process.name}</h1>
-          {process.description && (
-            <p className="text-muted-foreground">{process.description}</p>
-          )}
+          <div className="flex items-center gap-2 mt-1">
+            {process.description && (
+              <p className="text-muted-foreground">{process.description}</p>
+            )}
+            {inputMode === "beleg" && (
+              <Badge variant="secondary">Beleginput</Badge>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Time Period Selection */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -293,131 +382,266 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
               </Select>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-3">
-            Diese Werte stehen im Python-Code als Variablen <code className="bg-muted px-1 rounded">month</code> und <code className="bg-muted px-1 rounded">year</code> zur Verfügung.
-            {(process as any).executionFrequency === "quarterly" && (
-              <> Zusätzlich gibt es die Variable <code className="bg-muted px-1 rounded">quarter</code>.</>
-            )}
-          </p>
+          {inputMode === "daten" && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Diese Werte stehen im Python-Code als Variablen <code className="bg-muted px-1 rounded">month</code> und <code className="bg-muted px-1 rounded">year</code> zur Verfügung.
+              {(process as any).executionFrequency === "quarterly" && (
+                <> Zusätzlich gibt es die Variable <code className="bg-muted px-1 rounded">quarter</code>.</>
+              )}
+            </p>
+          )}
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5" />
-              Input-Dateien hochladen
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {inputFileSlots.map((slot, index) => (
-              <div key={slot.id} className="p-4 border rounded-md space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Label className="font-medium">
-                    {slot.label}
-                    {slot.required && <span className="text-destructive ml-1">*</span>}
-                  </Label>
-                  <Badge variant="secondary">{slot.variable}</Badge>
-                </div>
-                {slot.description && (
-                  <p className="text-sm text-muted-foreground">{slot.description}</p>
-                )}
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="file"
-                    accept=".csv,.xlsx,.xls,.json"
-                    onChange={(e) => handleFileChange(slot.id, e.target.files?.[0] || null)}
-                    data-testid={`input-file-${index}`}
-                  />
-                  {uploadedFiles.has(slot.id) && (
-                    <Check className="h-5 w-5 text-chart-2 flex-shrink-0" />
-                  )}
-                </div>
-              </div>
-            ))}
-
-            <Button
-              onClick={handleExecute}
-              disabled={!allRequiredFilesUploaded || executeMutation.isPending}
-              className="w-full"
-              data-testid="button-execute-process"
-            >
-              {executeMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Wird ausgeführt...
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 mr-2" />
-                  Prozess ausführen
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Download className="h-5 w-5" />
-              Export-Dateien
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {executionResult ? (
-              executionResult.success ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-chart-2">
-                    <Check className="h-5 w-5" />
-                    <span className="font-medium">Transformation erfolgreich</span>
+      {inputMode === "daten" ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                Input-Dateien hochladen
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {inputFileSlots.map((slot, index) => (
+                <div key={slot.id} className="p-4 border rounded-md space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="font-medium">
+                      {slot.label}
+                      {slot.required && <span className="text-destructive ml-1">*</span>}
+                    </Label>
+                    <Badge variant="secondary">{slot.variable}</Badge>
                   </div>
-                  {executionResult.outputs?.map((output, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 border rounded-md">
-                      <div>
-                        <p className="font-medium">{output.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          Format: {output.format.toUpperCase()}
+                  {slot.description && (
+                    <p className="text-sm text-muted-foreground">{slot.description}</p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      accept=".csv,.xlsx,.xls,.json"
+                      onChange={(e) => handleFileChange(slot.id, e.target.files?.[0] || null)}
+                      data-testid={`input-file-${index}`}
+                    />
+                    {uploadedFiles.has(slot.id) && (
+                      <Check className="h-5 w-5 text-chart-2 flex-shrink-0" />
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              <Button
+                onClick={handleExecute}
+                disabled={!allRequiredFilesUploaded || executeMutation.isPending}
+                className="w-full"
+                data-testid="button-execute-process"
+              >
+                {executeMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Wird ausgeführt...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 mr-2" />
+                    Prozess ausführen
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Download className="h-5 w-5" />
+                Export-Dateien
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {executionResult ? (
+                executionResult.success ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-chart-2">
+                      <Check className="h-5 w-5" />
+                      <span className="font-medium">Transformation erfolgreich</span>
+                    </div>
+                    {executionResult.outputs?.map((output, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 border rounded-md">
+                        <div>
+                          <p className="font-medium">{output.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Format: {output.format.toUpperCase()}
+                          </p>
+                        </div>
+                        <a href={output.downloadUrl} download>
+                          <Button variant="outline" size="sm" data-testid={`button-download-${index}`}>
+                            <Download className="h-4 w-4 mr-1" />
+                            Download
+                          </Button>
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-destructive">
+                      <X className="h-5 w-5" />
+                      <span className="font-medium">Fehler bei der Ausführung</span>
+                    </div>
+                    <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                      <p className="text-sm font-mono whitespace-pre-wrap">{executionResult.error}</p>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Download className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>Führen Sie den Prozess aus, um Export-Dateien zu generieren.</p>
+                  <div className="mt-4 space-y-2">
+                    {outputFiles.map((file) => (
+                      <div key={file.id} className="text-sm">
+                        <span className="font-medium">{file.name}</span>
+                        <span className="text-muted-foreground"> ({file.format.toUpperCase()})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="space-y-6">
+            {belegFileSlots.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Belegdateien hochladen
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {belegFileSlots.map((slot, index) => (
+                  <div key={slot.id} className="p-4 border rounded-md space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="font-medium">
+                        {slot.label}
+                        {slot.required && <span className="text-destructive ml-1">*</span>}
+                      </Label>
+                    </div>
+                    {slot.description && (
+                      <p className="text-sm text-muted-foreground">{slot.description}</p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.csv,.xlsx,.xls,.doc,.docx"
+                        onChange={(e) => handleBelegFileChange(slot.id, e.target.files?.[0] || null)}
+                        data-testid={`input-beleg-file-${index}`}
+                      />
+                      {belegFiles.has(slot.id) && (
+                        <Check className="h-5 w-5 text-chart-2 flex-shrink-0" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+            )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5" />
+                  Beträge eingeben
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {manualAmountFields.map((field, index) => (
+                  <div key={field.id} className="p-4 border rounded-md space-y-2">
+                    <Label className="font-medium">{field.label}</Label>
+                    {field.description && (
+                      <p className="text-sm text-muted-foreground">{field.description}</p>
+                    )}
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={manualAmountValues[field.id] || ""}
+                      onChange={(e) => handleAmountChange(field.id, e.target.value)}
+                      placeholder="0,00"
+                      data-testid={`input-amount-value-${index}`}
+                    />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Check className="h-5 w-5" />
+                Erfassung
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {executionResult ? (
+                executionResult.success ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-chart-2">
+                      <Check className="h-5 w-5" />
+                      <span className="font-medium">Beleg erfolgreich erfasst</span>
+                    </div>
+                    {executionResult.totalAmount && (
+                      <div className="p-3 border rounded-md">
+                        <p className="text-sm text-muted-foreground">Erfasster Gesamtbetrag</p>
+                        <p className="text-lg font-semibold">
+                          {parseFloat(executionResult.totalAmount).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR
                         </p>
                       </div>
-                      <a href={output.downloadUrl} download>
-                        <Button variant="outline" size="sm" data-testid={`button-download-${index}`}>
-                          <Download className="h-4 w-4 mr-1" />
-                          Download
-                        </Button>
-                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-destructive">
+                      <X className="h-5 w-5" />
+                      <span className="font-medium">Fehler bei der Erfassung</span>
                     </div>
-                  ))}
-                </div>
+                    <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                      <p className="text-sm font-mono whitespace-pre-wrap">{executionResult.error}</p>
+                    </div>
+                  </div>
+                )
               ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-destructive">
-                    <X className="h-5 w-5" />
-                    <span className="font-medium">Fehler bei der Ausführung</span>
-                  </div>
-                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                    <p className="text-sm font-mono whitespace-pre-wrap">{executionResult.error}</p>
-                  </div>
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>Laden Sie Belege hoch und tragen Sie die Beträge ein, um die Erfassung abzuschließen.</p>
                 </div>
-              )
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <Download className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Führen Sie den Prozess aus, um Export-Dateien zu generieren.</p>
-                <div className="mt-4 space-y-2">
-                  {outputFiles.map((file, index) => (
-                    <div key={file.id} className="text-sm">
-                      <span className="font-medium">{file.name}</span>
-                      <span className="text-muted-foreground"> ({file.format.toUpperCase()})</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              )}
+
+              <Button
+                onClick={handleBelegExecute}
+                disabled={!canExecuteBeleg || executeMutation.isPending}
+                className="w-full"
+                data-testid="button-execute-beleg"
+              >
+                {executeMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Wird erfasst...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 mr-2" />
+                    Beleg erfassen
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

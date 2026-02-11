@@ -82,6 +82,7 @@ export const mandantUserAssignmentsRelations = relations(mandantUserAssignments,
 export const processStatusEnum = pgEnum("process_status", ["pending", "completed", "failed"]);
 export const executionFrequencyEnum = pgEnum("execution_frequency", ["weekly", "monthly", "quarterly", "yearly"]);
 export const processTypeEnum = pgEnum("process_type", ["umsatz", "zahlung"]);
+export const inputModeEnum = pgEnum("input_mode", ["daten", "beleg"]);
 
 export const macros = pgTable("macros", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -117,12 +118,15 @@ export const processes = pgTable("processes", {
   name: text("name").notNull(),
   description: text("description"),
   processType: processTypeEnum("process_type").notNull().default("umsatz"),
+  inputMode: inputModeEnum("input_mode").notNull().default("daten"),
   executionFrequency: executionFrequencyEnum("execution_frequency").notNull().default("monthly"),
   inputFileCount: integer("input_file_count").notNull().default(1),
   inputFileSlots: jsonb("input_file_slots").notNull().default([]),
   pythonCode: text("python_code").notNull().default(""),
   outputFiles: jsonb("output_files").notNull().default([]),
   usedMacroIds: jsonb("used_macro_ids").notNull().default([]),
+  belegFileSlots: jsonb("beleg_file_slots").notNull().default([]),
+  manualAmountFields: jsonb("manual_amount_fields").notNull().default([]),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -146,6 +150,7 @@ export const processExecutions = pgTable("process_executions", {
   inputFiles: jsonb("input_files").notNull().default([]),
   attachments: jsonb("attachments").notNull().default([]),
   outputData: jsonb("output_data"),
+  manualAmounts: jsonb("manual_amounts"),
   transactionCount: integer("transaction_count").default(0),
   totalAmount: text("total_amount"),
   countryBreakdown: jsonb("country_breakdown"),
@@ -261,6 +266,19 @@ export interface InputFileSlot {
   label: string;
   description?: string;
   required: boolean;
+}
+
+export interface BelegFileSlot {
+  id: string;
+  label: string;
+  description?: string;
+  required: boolean;
+}
+
+export interface ManualAmountField {
+  id: string;
+  label: string;
+  description?: string;
 }
 
 export interface OutputFile {

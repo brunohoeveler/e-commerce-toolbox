@@ -397,6 +397,89 @@ export async function registerRoutes(
       
       if (!(await requireMandantAccess(req, res, processData.mandantId))) return;
 
+      // Parse time period from form data (shared between both modes)
+      const year = parseInt(req.body.year) || new Date().getFullYear();
+      const month = req.body.month ? parseInt(req.body.month) : undefined;
+      const quarter = req.body.quarter ? parseInt(req.body.quarter) : undefined;
+
+      // Check if this is a "beleg" mode execution
+      const inputMode = req.body.inputMode || (processData as any).inputMode || "daten";
+      
+      if (inputMode === "beleg") {
+        const uploadedBelegFiles = req.files as Express.Multer.File[];
+        
+        let manualAmounts: Array<{ fieldId: string; label: string; value: string }> = [];
+        if (req.body.manualAmounts) {
+          try {
+            manualAmounts = JSON.parse(req.body.manualAmounts);
+          } catch (e) {
+            console.error("Error parsing manualAmounts:", e);
+          }
+        }
+
+        const totalAmount = manualAmounts.reduce((sum, amt) => {
+          const val = parseFloat(amt.value.replace(/\./g, '').replace(',', '.')) || 0;
+          return sum + val;
+        }, 0).toFixed(2);
+
+        const execution = await storage.createProcessExecution({
+          processId: processData.id,
+          mandantId: processData.mandantId,
+          status: "completed",
+          month: month || null,
+          quarter: quarter || null,
+          year,
+          inputFiles: [],
+          attachments: [],
+          transactionCount: 0,
+          totalAmount,
+          manualAmounts: manualAmounts,
+        });
+
+        const attachments: Array<{ slotId: string; slotLabel: string; fileName: string; storagePath: string }> = [];
+        
+        if (uploadedBelegFiles && uploadedBelegFiles.length > 0) {
+          const belegFileSlots = ((processData as any).belegFileSlots || []) as Array<{ id: string; label: string }>;
+          
+          for (const file of uploadedBelegFiles) {
+            const slotId = file.fieldname.replace('beleg_', '');
+            const slot = belegFileSlots.find((s: any) => s.id === slotId);
+            const slotLabel = slot?.label || `Beleg ${slotId}`;
+            
+            try {
+              const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+              if (bucketId) {
+                const storagePath = `executions/${execution.id}/${file.originalname}`;
+                const bucket = objectStorageClient.bucket(bucketId);
+                const fileObj = bucket.file(storagePath);
+                await fileObj.save(file.buffer);
+                
+                attachments.push({
+                  slotId,
+                  slotLabel,
+                  fileName: file.originalname,
+                  storagePath: `/${bucketId}/${storagePath}`,
+                });
+              }
+            } catch (uploadError) {
+              console.error("Error uploading beleg file:", uploadError);
+            }
+          }
+        }
+
+        if (attachments.length > 0) {
+          await storage.updateProcessExecution(execution.id, { attachments });
+        }
+
+        return res.json({
+          success: true,
+          totalAmount,
+          executionId: execution.id,
+        });
+      }
+
+      // === "daten" mode: Python transformation ===
+
       // Security check: External users cannot execute processes with macros
       const usedMacroIds = (processData as any).usedMacroIds as string[] || [];
       if (usedMacroIds.length > 0) {
@@ -558,11 +641,6 @@ export async function registerRoutes(
       } catch (error) {
         console.warn("Error loading template files:", error);
       }
-
-      // Parse month, quarter, and year from form data
-      const year = parseInt(req.body.year) || new Date().getFullYear();
-      const month = req.body.month ? parseInt(req.body.month) : undefined;
-      const quarter = req.body.quarter ? parseInt(req.body.quarter) : undefined;
 
       // Create process execution record (status: pending)
       const execution = await storage.createProcessExecution({
