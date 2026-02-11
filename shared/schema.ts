@@ -29,6 +29,7 @@ export interface DashboardConfig {
   showTransactions: boolean;
   showRevenue: boolean;
   showPayments: boolean;
+  showOpenPayments: boolean;
 }
 
 export const defaultDashboardConfig: DashboardConfig = {
@@ -41,7 +42,24 @@ export const defaultDashboardConfig: DashboardConfig = {
   showTransactions: true,
   showRevenue: true,
   showPayments: true,
+  showOpenPayments: true,
 };
+
+export function normalizeDashboardConfig(stored: Partial<DashboardConfig> | null | undefined): DashboardConfig {
+  if (!stored) return { ...defaultDashboardConfig };
+  return {
+    showTotalRevenue: !!stored.showTotalRevenue,
+    showRevenueByPlatform: !!stored.showRevenueByPlatform,
+    showRevenueByCountry: !!stored.showRevenueByCountry,
+    showRevenueByCurrency: !!stored.showRevenueByCurrency,
+    showProcessExecutions: !!stored.showProcessExecutions,
+    showProcessTodos: !!stored.showProcessTodos,
+    showTransactions: !!stored.showTransactions,
+    showRevenue: !!stored.showRevenue,
+    showPayments: !!stored.showPayments,
+    showOpenPayments: !!stored.showOpenPayments,
+  };
+}
 
 export const mandanten = pgTable("mandanten", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

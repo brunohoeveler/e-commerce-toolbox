@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useQuery } from "@tanstack/react-query";
 import type { Mandant, DashboardConfig, Process, ProcessExecution } from "@shared/schema";
-import { defaultDashboardConfig } from "@shared/schema";
+import { defaultDashboardConfig, normalizeDashboardConfig } from "@shared/schema";
 
 interface DashboardPageProps {
   mandantId: string | null;
@@ -105,14 +105,11 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
   });
 
   const mandant = mandanten?.find(m => m.id === mandantId);
-  const config: DashboardConfig = {
-    ...defaultDashboardConfig,
-    ...(mandant?.dashboardConfig || {}),
-  };
+  const config: DashboardConfig = normalizeDashboardConfig(mandant?.dashboardConfig);
 
   const needsExecutions = config.showProcessExecutions || config.showProcessTodos || 
                           config.showTransactions || config.showRevenue || config.showPayments ||
-                          config.showTotalRevenue;
+                          config.showTotalRevenue || config.showOpenPayments;
 
   const { data: executions } = useQuery<ProcessExecution[]>({
     queryKey: [`/api/process-executions?mandantId=${mandantId}`],
@@ -121,7 +118,7 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
 
   const { data: processes } = useQuery<Process[]>({
     queryKey: [`/api/processes?mandantId=${mandantId}`],
-    enabled: !!mandantId && (config.showProcessTodos || config.showRevenue || config.showPayments || config.showTransactions || config.showTotalRevenue),
+    enabled: !!mandantId && (config.showProcessTodos || config.showRevenue || config.showPayments || config.showTransactions || config.showTotalRevenue || config.showOpenPayments),
   });
 
   const now = new Date();
@@ -203,7 +200,8 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                        config.showProcessTodos ||
                        config.showTransactions ||
                        config.showRevenue ||
-                       config.showPayments;
+                       config.showPayments ||
+                       config.showOpenPayments;
 
   const periodLabel = viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr";
 
@@ -276,6 +274,23 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {periodLabel} (aus Zahlungs-Prozessen)
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {config.showOpenPayments && (
+              <Card data-testid="card-open-payments">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Offene Zahlungen</CardTitle>
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="text-open-payments-value">
+                    {formatCurrency(metrics.totalRevenue - metrics.totalPayments)} EUR
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {periodLabel} (Umsätze - Zahlungen)
                   </p>
                 </CardContent>
               </Card>

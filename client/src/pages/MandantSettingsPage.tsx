@@ -30,7 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Mandant, DashboardConfig } from "@shared/schema";
-import { defaultDashboardConfig } from "@shared/schema";
+import { defaultDashboardConfig, normalizeDashboardConfig } from "@shared/schema";
 
 // Better Auth user type
 interface AuthUser {
@@ -75,7 +75,7 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
         sachkontenLaenge: mandant.sachkontenLaenge,
         sachkontenRahmen: mandant.sachkontenRahmen,
       });
-      setDashboardConfig(mandant.dashboardConfig || defaultDashboardConfig);
+      setDashboardConfig(normalizeDashboardConfig(mandant.dashboardConfig));
     }
   }, [mandant]);
 
@@ -324,6 +324,20 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                   />
                   <Label htmlFor="showPayments" className="font-normal cursor-pointer">
                     Zahlungen (aus Zahlungs-Prozessen)
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="showOpenPayments"
+                    checked={dashboardConfig.showOpenPayments}
+                    onCheckedChange={(checked) =>
+                      setDashboardConfig(prev => ({ ...prev, showOpenPayments: !!checked }))
+                    }
+                    disabled={!isInternal}
+                    data-testid="checkbox-open-payments"
+                  />
+                  <Label htmlFor="showOpenPayments" className="font-normal cursor-pointer">
+                    Offene Zahlungen (Umsätze - Zahlungen)
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">

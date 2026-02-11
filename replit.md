@@ -64,6 +64,7 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 - dashboardConfig: Konfiguration der Dashboard-Anzeige pro Mandant
   - showRevenue: boolean (Umsatz-Karte aus Umsatz-Prozessen)
   - showPayments: boolean (Zahlungs-Karte aus Zahlungs-Prozessen)
+  - showOpenPayments: boolean (Offene Zahlungen = Umsätze - Zahlungen)
   - showTransactions: boolean (Buchungen/Transaktionsanzahl)
   - showTotalRevenue: boolean (Gesamtumsatz anzeigen)
   - showRevenueByPlatform: boolean (Umsatz nach Plattform)
