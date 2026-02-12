@@ -117,16 +117,18 @@ export function ProcessHistoryPage({ mandantId }: ProcessHistoryPageProps) {
     }
   };
 
-  const handleDownloadResult = async (executionId: string, delimiter: string = 'semicolon') => {
+  const handleDownloadResult = async (executionId: string, format: string = 'csv', delimiter: string = 'semicolon') => {
     try {
-      const response = await fetch(`/api/process-executions/${executionId}/result?delimiter=${delimiter}`);
+      const response = await fetch(`/api/process-executions/${executionId}/result?delimiter=${delimiter}&format=${format}`);
       if (!response.ok) throw new Error("Download failed");
       
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `export_${executionId}.csv`;
+      const disposition = response.headers.get('Content-Disposition');
+      const filenameMatch = disposition?.match(/filename="([^"]+)"/);
+      a.download = filenameMatch ? filenameMatch[1] : `export_${executionId}.csv`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -335,18 +337,32 @@ export function ProcessHistoryPage({ mandantId }: ProcessHistoryPageProps) {
                           <FileOutput className="h-4 w-4" />
                           Export-Datei (Output)
                         </h4>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDownloadResult(execution.id);
-                          }}
-                          data-testid={`download-output-${execution.id}`}
-                        >
-                          <Download className="h-3 w-3 mr-1" />
-                          Export herunterladen (CSV)
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadResult(execution.id, 'csv');
+                            }}
+                            data-testid={`download-output-csv-${execution.id}`}
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            CSV Export
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadResult(execution.id, 'datev');
+                            }}
+                            data-testid={`download-output-datev-${execution.id}`}
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            DATEV Format
+                          </Button>
+                        </div>
                       </div>
                     )}
 

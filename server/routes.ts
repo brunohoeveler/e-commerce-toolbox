@@ -962,19 +962,19 @@ export async function registerRoutes(
   app.get("/api/process-executions/:id/result", isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const { delimiter = 'semicolon' } = req.query;
+      const { delimiter = 'semicolon', format = 'csv' } = req.query;
       
       const execution = await storage.getProcessExecution(id);
       if (!execution) {
         return res.status(404).json({ message: "Execution not found" });
       }
       
-      const process = await storage.getProcess(execution.processId);
-      if (!process) {
+      const processData = await storage.getProcess(execution.processId);
+      if (!processData) {
         return res.status(404).json({ message: "Process not found" });
       }
       
-      if (!(await requireMandantAccess(req, res, process.mandantId))) return;
+      if (!(await requireMandantAccess(req, res, processData.mandantId))) return;
       
       const outputData = execution.outputData as { 
         content?: string;
@@ -988,14 +988,76 @@ export async function registerRoutes(
         return res.status(404).json({ message: "No transformation result available" });
       }
       
-      // Decode base64 content
-      const csvContent = Buffer.from(outputData.content, 'base64').toString('utf-8');
-      
-      const fileName = `${process.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${execution.month}_${execution.year}_result.csv`;
-      
-      res.setHeader('Content-Type', outputData.contentType || 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-      res.send(csvContent);
+      if (format === 'datev') {
+        const mandant = await storage.getMandant(processData.mandantId);
+        if (!mandant) {
+          return res.status(404).json({ message: "Mandant not found" });
+        }
+
+        const csvBuffer = Buffer.from(outputData.content, 'base64');
+
+        const patternTemplate = await storage.getTemplateFileByName('pattern_datev');
+        let patternBuffer: Buffer | null = null;
+        if (patternTemplate) {
+          try {
+            const storagePath = patternTemplate.storagePath;
+            const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
+            if (pathMatch) {
+              const bucket = objectStorageClient.bucket(pathMatch[1]);
+              const file = bucket.file(pathMatch[2]);
+              const [content] = await file.download();
+              patternBuffer = content;
+            }
+          } catch (err) {
+            console.warn("Failed to load pattern_datev template:", err);
+          }
+        }
+
+        const FormData = (await import('form-data')).default;
+        const formData = new FormData();
+        formData.append('output_csv', csvBuffer, { filename: 'output.csv', contentType: 'text/csv' });
+        if (patternBuffer) {
+          formData.append('pattern_file', patternBuffer, { filename: 'pattern_datev.csv', contentType: 'text/csv' });
+        }
+        formData.append('mandant_info', JSON.stringify({
+          mandantennummer: mandant.mandantenNummer,
+          beraternummer: mandant.beraterNummer,
+          sachkontenlaenge: mandant.sachkontenLaenge,
+          sachkontenrahmen: mandant.sachkontenRahmen,
+        }));
+        formData.append('time_period_info', JSON.stringify({
+          month: execution.month || 1,
+          year: execution.year || new Date().getFullYear(),
+        }));
+        formData.append('process_name', processData.name || '');
+
+        const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'http://localhost:5001';
+        const fetchModule = await import('node-fetch');
+        const pythonRes = await fetchModule.default(`${PYTHON_SERVICE_URL}/export-datev`, {
+          method: 'POST',
+          body: formData as any,
+          headers: formData.getHeaders(),
+        });
+
+        const result = await pythonRes.json() as any;
+        if (!result.success) {
+          return res.status(500).json({ message: result.error || 'DATEV export failed' });
+        }
+
+        const datevContent = Buffer.from(result.content, 'base64').toString('utf-8');
+        const fileName = `DATEV_${processData.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${execution.month}_${execution.year}.csv`;
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.send(datevContent);
+      } else {
+        const csvContent = Buffer.from(outputData.content, 'base64').toString('utf-8');
+        const fileName = `${processData.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${execution.month}_${execution.year}_result.csv`;
+        
+        res.setHeader('Content-Type', outputData.contentType || 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.send(csvContent);
+      }
       
     } catch (error) {
       console.error("Error downloading result:", error);

@@ -175,6 +175,20 @@ npm run db:push
 npm run dev
 ```
 
+## Export-Formate
+
+### CSV Export
+- Standard CSV-Export der transformierten Daten
+- Delimiter konfigurierbar (Standard: Semikolon)
+
+### DATEV Format
+- CSV mit ";" als Delimiter
+- Verwendet `pattern_datev` Vorlagedatei aus Vorlagen für Spalten-Mapping via `pl.concat(how='align')`
+- Oberste Zeile enthält DATEV-Header: `DTVF;700;21;Buchungsstapel;12;;;;;;{beraternummer};{mandantennummer};{year}0101;{sachkontenlaenge};{year}{month}01;{year}{month}{days};{description};;1;0;0;EUR;;;;;{sachkontenrahmen}`
+- `days` = maximale Tagesanzahl des Monats (Schaltjahre beachtet)
+- Header-Zeile wird über Python-Service `/export-datev` Endpoint generiert
+- Variablen aus Mandanteninformationen und Ausführungszeitraum
+
 ## Design-System
 - Primärfarbe: Blau (#2563EB)
 - Font: Inter

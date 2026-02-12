@@ -605,6 +605,89 @@ async def execute_python_code(
             "outputs": []
         }, status_code=500)
 
+@app.post("/export-datev")
+async def export_datev(
+    output_csv: UploadFile = File(...),
+    pattern_file: Optional[UploadFile] = File(None),
+    mandant_info: str = Form(...),
+    time_period_info: str = Form(...),
+    process_name: str = Form("")
+):
+    try:
+        import base64
+        import calendar
+
+        mandant_data = json.loads(mandant_info)
+        time_data = json.loads(time_period_info)
+
+        beraternummer = str(mandant_data.get('beraternummer', ''))
+        mandantennummer = str(mandant_data.get('mandantennummer', ''))
+        sachkontenlaenge = str(mandant_data.get('sachkontenlaenge', 4))
+        sachkontenrahmen = str(mandant_data.get('sachkontenrahmen', 3))
+
+        year = str(time_data.get('year', 2026))
+        month = int(time_data.get('month', 1))
+        month_number = str(month).zfill(2)
+        days = str(calendar.monthrange(int(year), month)[1]).zfill(2)
+
+        safe_description = (process_name or "").replace(";", " ").replace("\n", " ").replace("\r", "")
+
+        datev_line = (
+            "DTVF;700;21;Buchungsstapel;12;;;;;;"
+            + beraternummer + ";" + mandantennummer + ";"
+            + year + "0101;" + sachkontenlaenge + ";"
+            + year + month_number + "01;" + year + month_number + days + ";"
+            + safe_description + ";;1;0;0;EUR;;;;;" + sachkontenrahmen + "\n"
+        )
+
+        output_content = await output_csv.read()
+        output_text = output_content.decode('utf-8')
+        detected_sep = ','
+        first_line = output_text.split('\n')[0] if output_text else ''
+        if ';' in first_line and ',' not in first_line:
+            detected_sep = ';'
+        elif '\t' in first_line:
+            detected_sep = '\t'
+        data_df = pl.read_csv(io.BytesIO(output_content), separator=detected_sep, infer_schema_length=10000)
+
+        if pattern_file:
+            pattern_content = await pattern_file.read()
+            pattern_text = pattern_content.decode('utf-8')
+            pattern_first = pattern_text.split('\n')[0] if pattern_text else ''
+            pattern_sep = ';'
+            if '\t' in pattern_first and ';' not in pattern_first:
+                pattern_sep = '\t'
+            elif ',' in pattern_first and ';' not in pattern_first:
+                pattern_sep = ','
+            pattern_df = pl.read_csv(io.BytesIO(pattern_content), separator=pattern_sep, infer_schema_length=10000)
+            aligned_df = pl.concat([pattern_df, data_df], how="align")
+        else:
+            aligned_df = data_df
+
+        csv_buffer = io.BytesIO()
+        aligned_df.write_csv(csv_buffer, separator=";")
+        csv_buffer.seek(0)
+        csv_content = csv_buffer.getvalue().decode("utf-8")
+
+        final_content = datev_line + csv_content
+
+        content_b64 = base64.b64encode(final_content.encode("utf-8")).decode("utf-8")
+
+        return JSONResponse({
+            "success": True,
+            "content": content_b64,
+            "content_type": "text/csv",
+            "row_count": len(aligned_df),
+            "columns": aligned_df.columns
+        })
+
+    except Exception as e:
+        import traceback
+        return JSONResponse({
+            "success": False,
+            "error": f"DATEV export error: {str(e)}\n{traceback.format_exc()}"
+        }, status_code=500)
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
