@@ -668,6 +668,8 @@ async def export_datev(
             elif ',' in pattern_first and ';' not in pattern_first:
                 pattern_sep = ','
             pattern_df = pl.read_csv(io.BytesIO(pattern_content), separator=pattern_sep, infer_schema_length=10000)
+            data_df = data_df.cast({col: pl.Utf8 for col in data_df.columns})
+            pattern_df = pattern_df.cast({col: pl.Utf8 for col in pattern_df.columns})
             aligned_df = pl.concat([pattern_df, data_df], how="align")
         else:
             aligned_df = data_df
