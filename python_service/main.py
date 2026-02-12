@@ -641,7 +641,11 @@ async def export_datev(
         )
 
         output_content = await output_csv.read()
-        output_text = output_content.decode('utf-8')
+        try:
+            output_text = output_content.decode('utf-8')
+        except UnicodeDecodeError:
+            output_text = output_content.decode('latin-1')
+            output_content = output_text.encode('utf-8')
         detected_sep = ','
         first_line = output_text.split('\n')[0] if output_text else ''
         if ';' in first_line and ',' not in first_line:
@@ -652,7 +656,11 @@ async def export_datev(
 
         if pattern_file:
             pattern_content = await pattern_file.read()
-            pattern_text = pattern_content.decode('utf-8')
+            try:
+                pattern_text = pattern_content.decode('utf-8')
+            except UnicodeDecodeError:
+                pattern_text = pattern_content.decode('latin-1')
+                pattern_content = pattern_text.encode('utf-8')
             pattern_first = pattern_text.split('\n')[0] if pattern_text else ''
             pattern_sep = ';'
             if '\t' in pattern_first and ';' not in pattern_first:
