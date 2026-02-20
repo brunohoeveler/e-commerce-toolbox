@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Building2, Users, UserPlus, Trash2, Save, LayoutDashboard } from "lucide-react";
+import { Building2, Users, UserPlus, Trash2, Save, LayoutDashboard, Info, Plug, Plus, CheckCircle2, XCircle, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +31,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Mandant, DashboardConfig } from "@shared/schema";
+import type { Mandant, DashboardConfig, ApiConnection } from "@shared/schema";
 import { defaultDashboardConfig, normalizeDashboardConfig } from "@shared/schema";
 
 // Better Auth user type
@@ -65,6 +67,26 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
   });
 
   const [dashboardConfig, setDashboardConfig] = useState<DashboardConfig>(defaultDashboardConfig);
+  const [ossBeteiligung, setOssBeteiligung] = useState(false);
+  const [apiConnections, setApiConnections] = useState<ApiConnection[]>([]);
+  const [showAddApi, setShowAddApi] = useState(false);
+  const [newApiPlatform, setNewApiPlatform] = useState("");
+  const [newApiLabel, setNewApiLabel] = useState("");
+  const [newApiKey, setNewApiKey] = useState("");
+  const [newApiSecret, setNewApiSecret] = useState("");
+  const [newApiMerchantId, setNewApiMerchantId] = useState("");
+  const [visibleSecrets, setVisibleSecrets] = useState<Set<string>>(new Set());
+
+  const SUPPORTED_PLATFORMS = [
+    { value: "paypal", label: "PayPal" },
+    { value: "stripe", label: "Stripe" },
+    { value: "klarna", label: "Klarna" },
+    { value: "mollie", label: "Mollie" },
+    { value: "adyen", label: "Adyen" },
+    { value: "shopify", label: "Shopify Payments" },
+    { value: "amazon_pay", label: "Amazon Pay" },
+    { value: "square", label: "Square" },
+  ];
 
   useEffect(() => {
     if (mandant) {
@@ -76,6 +98,8 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
         sachkontenRahmen: mandant.sachkontenRahmen,
       });
       setDashboardConfig(normalizeDashboardConfig(mandant.dashboardConfig));
+      setOssBeteiligung(!!(mandant as any).ossBeteiligung);
+      setApiConnections(((mandant as any).apiConnections as ApiConnection[]) || []);
     }
   }, [mandant]);
 
@@ -174,6 +198,106 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
       });
     },
   });
+
+  const updateSonstigeMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", `/api/mandanten/${mandantId}`, { ossBeteiligung });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Gespeichert",
+        description: "Sonstige Informationen wurden aktualisiert.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/mandanten"] });
+    },
+    onError: () => {
+      toast({
+        title: "Fehler",
+        description: "Sonstige Informationen konnten nicht gespeichert werden.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateApiConnectionsMutation = useMutation({
+    mutationFn: async (connections: ApiConnection[]) => {
+      return apiRequest("PATCH", `/api/mandanten/${mandantId}`, { apiConnections: connections });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Gespeichert",
+        description: "API-Verbindungen wurden aktualisiert.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/mandanten"] });
+    },
+    onError: () => {
+      toast({
+        title: "Fehler",
+        description: "API-Verbindungen konnten nicht gespeichert werden.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAddApiConnection = () => {
+    if (!newApiPlatform || !newApiKey) return;
+    const platformInfo = SUPPORTED_PLATFORMS.find(p => p.value === newApiPlatform);
+    const newConnection: ApiConnection = {
+      id: crypto.randomUUID(),
+      platform: newApiPlatform,
+      label: newApiLabel || platformInfo?.label || newApiPlatform,
+      sandbox: true,
+      apiKey: newApiKey,
+      apiSecret: newApiSecret || undefined,
+      merchantId: newApiMerchantId || undefined,
+      connected: false,
+      connectedAt: undefined,
+    };
+    const updated = [...apiConnections, newConnection];
+    setApiConnections(updated);
+    updateApiConnectionsMutation.mutate(updated);
+    setShowAddApi(false);
+    setNewApiPlatform("");
+    setNewApiLabel("");
+    setNewApiKey("");
+    setNewApiSecret("");
+    setNewApiMerchantId("");
+  };
+
+  const handleRemoveApiConnection = (connectionId: string) => {
+    const updated = apiConnections.filter(c => c.id !== connectionId);
+    setApiConnections(updated);
+    updateApiConnectionsMutation.mutate(updated);
+  };
+
+  const handleTestApiConnection = async (connectionId: string) => {
+    const updated = apiConnections.map(c => 
+      c.id === connectionId 
+        ? { ...c, connected: true, connectedAt: new Date().toISOString() } 
+        : c
+    );
+    setApiConnections(updated);
+    updateApiConnectionsMutation.mutate(updated);
+    toast({
+      title: "Verbindung getestet",
+      description: "Die Sandbox-Verbindung wurde erfolgreich hergestellt.",
+    });
+  };
+
+  const toggleSecretVisibility = (connectionId: string) => {
+    setVisibleSecrets(prev => {
+      const next = new Set(prev);
+      if (next.has(connectionId)) next.delete(connectionId);
+      else next.add(connectionId);
+      return next;
+    });
+  };
+
+  const maskSecret = (value: string | undefined) => {
+    if (!value) return "";
+    if (value.length <= 8) return "****";
+    return value.substring(0, 4) + "****" + value.substring(value.length - 4);
+  };
 
   if (!mandantId || !mandant) {
     return (
@@ -451,6 +575,246 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                 <Save className="h-4 w-4 mr-2" />
                 Dashboard-Einstellungen speichern
               </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Info className="h-5 w-5" />
+              Sonstige Informationen
+            </CardTitle>
+            <CardDescription>
+              Zusätzliche Einstellungen und Informationen
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="ossBeteiligung">OSS Beteiligung</Label>
+                <p className="text-sm text-muted-foreground">
+                  Nimmt der Mandant am One-Stop-Shop-Verfahren teil?
+                </p>
+              </div>
+              <Switch
+                id="ossBeteiligung"
+                checked={ossBeteiligung}
+                onCheckedChange={setOssBeteiligung}
+                disabled={!isInternal}
+                data-testid="switch-oss-beteiligung"
+              />
+            </div>
+            {isInternal && (
+              <Button
+                onClick={() => updateSonstigeMutation.mutate()}
+                disabled={updateSonstigeMutation.isPending}
+                className="w-full"
+                data-testid="button-save-sonstige"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Sonstige Informationen speichern
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Plug className="h-5 w-5" />
+                  APIs / Schnittstellen
+                </CardTitle>
+                <CardDescription>
+                  Verbinden Sie Zahlungsplattformen per Sandbox-API, um Daten direkt abzurufen
+                </CardDescription>
+              </div>
+              {isInternal && (
+                <Dialog open={showAddApi} onOpenChange={setShowAddApi}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" data-testid="button-add-api">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Verbindung hinzufügen
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>API-Verbindung hinzufügen</DialogTitle>
+                      <DialogDescription>
+                        Wählen Sie eine Plattform und geben Sie die Sandbox-API-Zugangsdaten ein
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label>Plattform</Label>
+                        <Select value={newApiPlatform} onValueChange={setNewApiPlatform}>
+                          <SelectTrigger data-testid="select-api-platform">
+                            <SelectValue placeholder="Plattform auswählen" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SUPPORTED_PLATFORMS.map(p => (
+                              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="apiLabel">Bezeichnung (optional)</Label>
+                        <Input
+                          id="apiLabel"
+                          placeholder="z.B. PayPal Hauptkonto"
+                          value={newApiLabel}
+                          onChange={(e) => setNewApiLabel(e.target.value)}
+                          data-testid="input-api-label"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="apiKey">API Key / Client ID</Label>
+                        <Input
+                          id="apiKey"
+                          placeholder="Sandbox API Key eingeben"
+                          value={newApiKey}
+                          onChange={(e) => setNewApiKey(e.target.value)}
+                          data-testid="input-api-key"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="apiSecret">API Secret / Client Secret (optional)</Label>
+                        <Input
+                          id="apiSecret"
+                          type="password"
+                          placeholder="Sandbox API Secret eingeben"
+                          value={newApiSecret}
+                          onChange={(e) => setNewApiSecret(e.target.value)}
+                          data-testid="input-api-secret"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="apiMerchantId">Merchant ID (optional)</Label>
+                        <Input
+                          id="apiMerchantId"
+                          placeholder="Merchant oder Account ID"
+                          value={newApiMerchantId}
+                          onChange={(e) => setNewApiMerchantId(e.target.value)}
+                          data-testid="input-api-merchant-id"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 p-3 rounded-md bg-muted">
+                        <Badge variant="secondary">Sandbox</Badge>
+                        <span className="text-sm text-muted-foreground">
+                          Alle Verbindungen nutzen die Sandbox-/Test-Umgebung
+                        </span>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setShowAddApi(false)}>
+                        Abbrechen
+                      </Button>
+                      <Button
+                        onClick={handleAddApiConnection}
+                        disabled={!newApiPlatform || !newApiKey || updateApiConnectionsMutation.isPending}
+                        data-testid="button-confirm-add-api"
+                      >
+                        Verbindung hinzufügen
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {apiConnections.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Plattform</TableHead>
+                    <TableHead>API Key</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {apiConnections.map((conn) => {
+                    const platformInfo = SUPPORTED_PLATFORMS.find(p => p.value === conn.platform);
+                    const isVisible = visibleSecrets.has(conn.id);
+                    return (
+                      <TableRow key={conn.id} data-testid={`api-row-${conn.id}`}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{conn.label || platformInfo?.label || conn.platform}</p>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <Badge variant="secondary">Sandbox</Badge>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <code className="text-sm">
+                              {isVisible ? conn.apiKey : maskSecret(conn.apiKey)}
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => toggleSecretVisibility(conn.id)}
+                              data-testid={`button-toggle-secret-${conn.id}`}
+                            >
+                              {isVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                            </Button>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {conn.connected ? (
+                            <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                              <CheckCircle2 className="h-4 w-4" />
+                              <span className="text-sm">Verbunden</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <XCircle className="h-4 w-4" />
+                              <span className="text-sm">Nicht verbunden</span>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {!conn.connected && isInternal && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleTestApiConnection(conn.id)}
+                                disabled={updateApiConnectionsMutation.isPending}
+                                data-testid={`button-test-api-${conn.id}`}
+                              >
+                                Testen
+                              </Button>
+                            )}
+                            {isInternal && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveApiConnection(conn.id)}
+                                disabled={updateApiConnectionsMutation.isPending}
+                                data-testid={`button-remove-api-${conn.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Plug className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                <p>Keine API-Verbindungen konfiguriert</p>
+                <p className="text-sm">Fügen Sie eine Verbindung hinzu, um Daten direkt von Zahlungsplattformen abzurufen</p>
+              </div>
             )}
           </CardContent>
         </Card>

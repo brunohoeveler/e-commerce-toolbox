@@ -60,7 +60,7 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 ## Datenmodelle
 
 ### Mandanten
-- id, name, mandantenNummer, beraterNummer, sachkontenLaenge, sachkontenRahmen, dashboardConfig (JSONB)
+- id, name, mandantenNummer, beraterNummer, sachkontenLaenge, sachkontenRahmen, dashboardConfig (JSONB), ossBeteiligung (boolean), apiConnections (JSONB Array)
 - dashboardConfig: Konfiguration der Dashboard-Anzeige pro Mandant
   - showRevenue: boolean (Umsatz-Karte aus Umsatz-Prozessen)
   - showPayments: boolean (Zahlungs-Karte aus Zahlungs-Prozessen)
