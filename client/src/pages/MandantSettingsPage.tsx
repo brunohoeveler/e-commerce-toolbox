@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Building2, Users, UserPlus, Trash2, Save, LayoutDashboard, Info, Plug, Plus, CheckCircle2, XCircle } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
@@ -34,7 +35,6 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Mandant, DashboardConfig, ApiConnection } from "@shared/schema";
 import { defaultDashboardConfig, normalizeDashboardConfig } from "@shared/schema";
 
-// Better Auth user type
 interface AuthUser {
   id: string;
   name: string;
@@ -52,12 +52,45 @@ interface AssignedUser {
   user: AuthUser;
 }
 
+const SUPPORTED_PLATFORMS = [
+  { value: "paypal", label: "PayPal" },
+  { value: "stripe", label: "Stripe" },
+  { value: "klarna", label: "Klarna" },
+  { value: "mollie", label: "Mollie" },
+  { value: "adyen", label: "Adyen" },
+  { value: "shopify", label: "Shopify Payments" },
+  { value: "amazon_pay", label: "Amazon Pay" },
+  { value: "square", label: "Square" },
+];
+
+function SectionHeader({ icon: Icon, title, description, action }: {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between flex-wrap gap-2">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 rounded-md bg-muted p-2">
+          <Icon className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <div>
+          <h2 className="text-base font-semibold">{title}</h2>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      {action}
+    </div>
+  );
+}
+
 export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageProps) {
   const { toast } = useToast();
   const { isInternal } = useAuth();
   const [showAddUser, setShowAddUser] = useState(false);
   const [userEmail, setUserEmail] = useState("");
-  
+
   const [formData, setFormData] = useState({
     name: "",
     mandantenNummer: 0,
@@ -75,17 +108,6 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
   const [newApiKey, setNewApiKey] = useState("");
   const [newApiSecret, setNewApiSecret] = useState("");
   const [newApiMerchantId, setNewApiMerchantId] = useState("");
-
-  const SUPPORTED_PLATFORMS = [
-    { value: "paypal", label: "PayPal" },
-    { value: "stripe", label: "Stripe" },
-    { value: "klarna", label: "Klarna" },
-    { value: "mollie", label: "Mollie" },
-    { value: "adyen", label: "Adyen" },
-    { value: "shopify", label: "Shopify Payments" },
-    { value: "amazon_pay", label: "Amazon Pay" },
-    { value: "square", label: "Square" },
-  ];
 
   useEffect(() => {
     if (mandant) {
@@ -114,14 +136,19 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
     enabled: !!mandantId,
   });
 
-  const updateMutation = useMutation({
+  const saveAllMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("PATCH", `/api/mandanten/${mandantId}`, formData);
+      return apiRequest("PATCH", `/api/mandanten/${mandantId}`, {
+        ...formData,
+        dashboardConfig,
+        ossBeteiligung,
+        apiConnections,
+      });
     },
     onSuccess: () => {
       toast({
         title: "Gespeichert",
-        description: "Mandanteninformationen wurden aktualisiert.",
+        description: "Alle Mandanteninformationen wurden aktualisiert.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/mandanten"] });
     },
@@ -129,26 +156,6 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
       toast({
         title: "Fehler",
         description: "Änderungen konnten nicht gespeichert werden.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateDashboardMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("PATCH", `/api/mandanten/${mandantId}`, { dashboardConfig });
-    },
-    onSuccess: () => {
-      toast({
-        title: "Gespeichert",
-        description: "Dashboard-Einstellungen wurden aktualisiert.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/mandanten"] });
-    },
-    onError: () => {
-      toast({
-        title: "Fehler",
-        description: "Dashboard-Einstellungen konnten nicht gespeichert werden.",
         variant: "destructive",
       });
     },
@@ -193,26 +200,6 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
       toast({
         title: "Fehler",
         description: "Zugriff konnte nicht entfernt werden.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateSonstigeMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("PATCH", `/api/mandanten/${mandantId}`, { ossBeteiligung });
-    },
-    onSuccess: () => {
-      toast({
-        title: "Gespeichert",
-        description: "Sonstige Informationen wurden aktualisiert.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/mandanten"] });
-    },
-    onError: () => {
-      toast({
-        title: "Fehler",
-        description: "Sonstige Informationen konnten nicht gespeichert werden.",
         variant: "destructive",
       });
     },
@@ -270,9 +257,9 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
   };
 
   const handleTestApiConnection = async (connectionId: string) => {
-    const updated = apiConnections.map(c => 
-      c.id === connectionId 
-        ? { ...c, connected: true, connectedAt: new Date().toISOString() } 
+    const updated = apiConnections.map(c =>
+      c.id === connectionId
+        ? { ...c, connected: true, connectedAt: new Date().toISOString() }
         : c
     );
     setApiConnections(updated);
@@ -282,7 +269,6 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
       description: "Die Sandbox-Verbindung wurde erfolgreich hergestellt.",
     });
   };
-
 
   if (!mandantId || !mandant) {
     return (
@@ -301,26 +287,23 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Mandanteninformationen</h1>
-        <p className="text-muted-foreground">
-          Bearbeiten Sie die Stammdaten und Benutzerberechtigungen
-        </p>
-      </div>
+    <div className="flex-1 overflow-auto">
+      <div className="max-w-3xl mx-auto p-6 space-y-8 pb-24">
+        <div>
+          <h1 className="text-2xl font-bold" data-testid="text-settings-title">Mandanteninformationen</h1>
+          <p className="text-muted-foreground">
+            Einstellungen und Konfiguration für {mandant.name}
+          </p>
+        </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
-              Stammdaten
-            </CardTitle>
-            <CardDescription>
-              Grundlegende Informationen zum Mandat
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {/* Stammdaten */}
+        <section className="space-y-4" data-testid="section-stammdaten">
+          <SectionHeader
+            icon={Building2}
+            title="Stammdaten"
+            description="Grundlegende Informationen zum Mandat"
+          />
+          <div className="space-y-4 pl-11">
             <div className="space-y-2">
               <Label htmlFor="name">Mandantenname</Label>
               <Input
@@ -379,202 +362,19 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                 />
               </div>
             </div>
-            {isInternal && (
-              <Button
-                onClick={() => updateMutation.mutate()}
-                disabled={updateMutation.isPending}
-                className="w-full"
-                data-testid="button-save-mandant"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Änderungen speichern
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <LayoutDashboard className="h-5 w-5" />
-              Dashboardverwaltung
-            </CardTitle>
-            <CardDescription>
-              Konfigurieren Sie, welche Elemente im Dashboard angezeigt werden
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-3">
-              <Label>Dashboard-Elemente</Label>
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="showRevenue"
-                    checked={dashboardConfig.showRevenue}
-                    onCheckedChange={(checked) =>
-                      setDashboardConfig(prev => ({ ...prev, showRevenue: !!checked }))
-                    }
-                    disabled={!isInternal}
-                    data-testid="checkbox-revenue"
-                  />
-                  <Label htmlFor="showRevenue" className="font-normal cursor-pointer">
-                    Umsatz (aus Umsatz-Prozessen)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="showPayments"
-                    checked={dashboardConfig.showPayments}
-                    onCheckedChange={(checked) =>
-                      setDashboardConfig(prev => ({ ...prev, showPayments: !!checked }))
-                    }
-                    disabled={!isInternal}
-                    data-testid="checkbox-payments"
-                  />
-                  <Label htmlFor="showPayments" className="font-normal cursor-pointer">
-                    Zahlungen (aus Zahlungs-Prozessen)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="showOpenPayments"
-                    checked={dashboardConfig.showOpenPayments}
-                    onCheckedChange={(checked) =>
-                      setDashboardConfig(prev => ({ ...prev, showOpenPayments: !!checked }))
-                    }
-                    disabled={!isInternal}
-                    data-testid="checkbox-open-payments"
-                  />
-                  <Label htmlFor="showOpenPayments" className="font-normal cursor-pointer">
-                    Offene Zahlungen (Umsätze - Zahlungen)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="showTransactions"
-                    checked={dashboardConfig.showTransactions}
-                    onCheckedChange={(checked) =>
-                      setDashboardConfig(prev => ({ ...prev, showTransactions: !!checked }))
-                    }
-                    disabled={!isInternal}
-                    data-testid="checkbox-transactions"
-                  />
-                  <Label htmlFor="showTransactions" className="font-normal cursor-pointer">
-                    Buchungen (Transaktionsanzahl)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="showTotalRevenue"
-                    checked={dashboardConfig.showTotalRevenue}
-                    onCheckedChange={(checked) =>
-                      setDashboardConfig(prev => ({ ...prev, showTotalRevenue: !!checked }))
-                    }
-                    disabled={!isInternal}
-                    data-testid="checkbox-total-revenue"
-                  />
-                  <Label htmlFor="showTotalRevenue" className="font-normal cursor-pointer">
-                    Gesamtumsatz
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="showRevenueByPlatform"
-                    checked={dashboardConfig.showRevenueByPlatform}
-                    onCheckedChange={(checked) =>
-                      setDashboardConfig(prev => ({ ...prev, showRevenueByPlatform: !!checked }))
-                    }
-                    disabled={!isInternal}
-                    data-testid="checkbox-revenue-platform"
-                  />
-                  <Label htmlFor="showRevenueByPlatform" className="font-normal cursor-pointer">
-                    Umsatz nach Plattform
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="showRevenueByCountry"
-                    checked={dashboardConfig.showRevenueByCountry}
-                    onCheckedChange={(checked) =>
-                      setDashboardConfig(prev => ({ ...prev, showRevenueByCountry: !!checked }))
-                    }
-                    disabled={!isInternal}
-                    data-testid="checkbox-revenue-country"
-                  />
-                  <Label htmlFor="showRevenueByCountry" className="font-normal cursor-pointer">
-                    Umsatz nach Ländern
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="showRevenueByCurrency"
-                    checked={dashboardConfig.showRevenueByCurrency}
-                    onCheckedChange={(checked) =>
-                      setDashboardConfig(prev => ({ ...prev, showRevenueByCurrency: !!checked }))
-                    }
-                    disabled={!isInternal}
-                    data-testid="checkbox-revenue-currency"
-                  />
-                  <Label htmlFor="showRevenueByCurrency" className="font-normal cursor-pointer">
-                    Umsatz nach Währungen
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="showProcessExecutions"
-                    checked={dashboardConfig.showProcessExecutions}
-                    onCheckedChange={(checked) =>
-                      setDashboardConfig(prev => ({ ...prev, showProcessExecutions: !!checked }))
-                    }
-                    disabled={!isInternal}
-                    data-testid="checkbox-process-executions"
-                  />
-                  <Label htmlFor="showProcessExecutions" className="font-normal cursor-pointer">
-                    Ausgeführte Prozesse
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="showProcessTodos"
-                    checked={dashboardConfig.showProcessTodos}
-                    onCheckedChange={(checked) =>
-                      setDashboardConfig(prev => ({ ...prev, showProcessTodos: !!checked }))
-                    }
-                    disabled={!isInternal}
-                    data-testid="checkbox-process-todos"
-                  />
-                  <Label htmlFor="showProcessTodos" className="font-normal cursor-pointer">
-                    Prozess-Aufgaben und Fortschritt (To-Do-Liste)
-                  </Label>
-                </div>
-              </div>
-            </div>
+        <Separator />
 
-            {isInternal && (
-              <Button
-                onClick={() => updateDashboardMutation.mutate()}
-                disabled={updateDashboardMutation.isPending}
-                className="w-full"
-                data-testid="button-save-dashboard"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Dashboard-Einstellungen speichern
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Info className="h-5 w-5" />
-              Sonstige Informationen
-            </CardTitle>
-            <CardDescription>
-              Zusätzliche Einstellungen und Informationen
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {/* Sonstige Informationen */}
+        <section className="space-y-4" data-testid="section-sonstige">
+          <SectionHeader
+            icon={Info}
+            title="Sonstige Informationen"
+            description="Zusätzliche Einstellungen und Informationen"
+          />
+          <div className="space-y-4 pl-11">
             <div className="flex items-center justify-between gap-4">
               <div className="space-y-0.5">
                 <Label htmlFor="ossBeteiligung">OSS Beteiligung</Label>
@@ -590,309 +390,305 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                 data-testid="switch-oss-beteiligung"
               />
             </div>
-            {isInternal && (
-              <Button
-                onClick={() => updateSonstigeMutation.mutate()}
-                disabled={updateSonstigeMutation.isPending}
-                className="w-full"
-                data-testid="button-save-sonstige"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Sonstige Informationen speichern
-              </Button>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Plug className="h-5 w-5" />
-                  APIs / Schnittstellen
-                </CardTitle>
-                <CardDescription>
-                  Verbinden Sie Zahlungsplattformen per Sandbox-API, um Daten direkt abzurufen
-                </CardDescription>
-              </div>
-              {isInternal && (
-                <Dialog open={showAddApi} onOpenChange={setShowAddApi}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" data-testid="button-add-api">
-                      <Plus className="h-4 w-4 mr-2" />
+        <Separator />
+
+        {/* Dashboardverwaltung */}
+        <section className="space-y-4" data-testid="section-dashboard">
+          <SectionHeader
+            icon={LayoutDashboard}
+            title="Dashboardverwaltung"
+            description="Konfigurieren Sie, welche Elemente im Dashboard angezeigt werden"
+          />
+          <div className="pl-11">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                { id: "showRevenue", key: "showRevenue" as const, label: "Umsatz (aus Umsatz-Prozessen)" },
+                { id: "showPayments", key: "showPayments" as const, label: "Zahlungen (aus Zahlungs-Prozessen)" },
+                { id: "showOpenPayments", key: "showOpenPayments" as const, label: "Offene Zahlungen (Umsätze - Zahlungen)" },
+                { id: "showTransactions", key: "showTransactions" as const, label: "Buchungen (Transaktionsanzahl)" },
+                { id: "showTotalRevenue", key: "showTotalRevenue" as const, label: "Gesamtumsatz" },
+                { id: "showRevenueByPlatform", key: "showRevenueByPlatform" as const, label: "Umsatz nach Plattform" },
+                { id: "showRevenueByCountry", key: "showRevenueByCountry" as const, label: "Umsatz nach Ländern" },
+                { id: "showRevenueByCurrency", key: "showRevenueByCurrency" as const, label: "Umsatz nach Währungen" },
+                { id: "showProcessExecutions", key: "showProcessExecutions" as const, label: "Ausgeführte Prozesse" },
+                { id: "showProcessTodos", key: "showProcessTodos" as const, label: "Prozess-Aufgaben (To-Do-Liste)" },
+              ].map(item => (
+                <div key={item.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={item.id}
+                    checked={dashboardConfig[item.key]}
+                    onCheckedChange={(checked) =>
+                      setDashboardConfig(prev => ({ ...prev, [item.key]: !!checked }))
+                    }
+                    disabled={!isInternal}
+                    data-testid={`checkbox-${item.id}`}
+                  />
+                  <Label htmlFor={item.id} className="font-normal cursor-pointer text-sm">
+                    {item.label}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <Separator />
+
+        {/* APIs / Schnittstellen */}
+        <section className="space-y-4" data-testid="section-apis">
+          <SectionHeader
+            icon={Plug}
+            title="APIs / Schnittstellen"
+            description="Verbinden Sie Zahlungsplattformen per Sandbox-API"
+            action={isInternal ? (
+              <Dialog open={showAddApi} onOpenChange={setShowAddApi}>
+                <DialogTrigger asChild>
+                  <Button size="sm" data-testid="button-add-api">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Verbindung hinzufügen
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>API-Verbindung hinzufügen</DialogTitle>
+                    <DialogDescription>
+                      Wählen Sie eine Plattform und geben Sie die Sandbox-API-Zugangsdaten ein
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Plattform</Label>
+                      <Select value={newApiPlatform} onValueChange={setNewApiPlatform}>
+                        <SelectTrigger data-testid="select-api-platform">
+                          <SelectValue placeholder="Plattform auswählen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SUPPORTED_PLATFORMS.map(p => (
+                            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="apiLabel">Bezeichnung (optional)</Label>
+                      <Input
+                        id="apiLabel"
+                        placeholder="z.B. PayPal Hauptkonto"
+                        value={newApiLabel}
+                        onChange={(e) => setNewApiLabel(e.target.value)}
+                        data-testid="input-api-label"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="apiKey">API Key / Client ID</Label>
+                      <Input
+                        id="apiKey"
+                        placeholder="Sandbox API Key eingeben"
+                        value={newApiKey}
+                        onChange={(e) => setNewApiKey(e.target.value)}
+                        data-testid="input-api-key"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="apiSecret">API Secret / Client Secret (optional)</Label>
+                      <Input
+                        id="apiSecret"
+                        type="password"
+                        placeholder="Sandbox API Secret eingeben"
+                        value={newApiSecret}
+                        onChange={(e) => setNewApiSecret(e.target.value)}
+                        data-testid="input-api-secret"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="apiMerchantId">Merchant ID (optional)</Label>
+                      <Input
+                        id="apiMerchantId"
+                        placeholder="Merchant oder Account ID"
+                        value={newApiMerchantId}
+                        onChange={(e) => setNewApiMerchantId(e.target.value)}
+                        data-testid="input-api-merchant-id"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 p-3 rounded-md bg-muted">
+                      <Badge variant="secondary">Sandbox</Badge>
+                      <span className="text-sm text-muted-foreground">
+                        Alle Verbindungen nutzen die Sandbox-/Test-Umgebung
+                      </span>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowAddApi(false)}>
+                      Abbrechen
+                    </Button>
+                    <Button
+                      onClick={handleAddApiConnection}
+                      disabled={!newApiPlatform || !newApiKey || updateApiConnectionsMutation.isPending}
+                      data-testid="button-confirm-add-api"
+                    >
                       Verbindung hinzufügen
                     </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>API-Verbindung hinzufügen</DialogTitle>
-                      <DialogDescription>
-                        Wählen Sie eine Plattform und geben Sie die Sandbox-API-Zugangsdaten ein
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2">
-                        <Label>Plattform</Label>
-                        <Select value={newApiPlatform} onValueChange={setNewApiPlatform}>
-                          <SelectTrigger data-testid="select-api-platform">
-                            <SelectValue placeholder="Plattform auswählen" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {SUPPORTED_PLATFORMS.map(p => (
-                              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            ) : undefined}
+          />
+          <div className="pl-11">
+            {apiConnections.length > 0 ? (
+              <div className="space-y-3">
+                {apiConnections.map((conn) => {
+                  const platformInfo = SUPPORTED_PLATFORMS.find(p => p.value === conn.platform);
+                  return (
+                    <div
+                      key={conn.id}
+                      className="flex items-center justify-between gap-3 p-3 rounded-md border"
+                      data-testid={`api-row-${conn.id}`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">
+                            {conn.label || platformInfo?.label || conn.platform}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <Badge variant="secondary">Sandbox</Badge>
+                            <code className="text-xs text-muted-foreground">{conn.apiKey || "****"}</code>
+                          </div>
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="apiLabel">Bezeichnung (optional)</Label>
-                        <Input
-                          id="apiLabel"
-                          placeholder="z.B. PayPal Hauptkonto"
-                          value={newApiLabel}
-                          onChange={(e) => setNewApiLabel(e.target.value)}
-                          data-testid="input-api-label"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="apiKey">API Key / Client ID</Label>
-                        <Input
-                          id="apiKey"
-                          placeholder="Sandbox API Key eingeben"
-                          value={newApiKey}
-                          onChange={(e) => setNewApiKey(e.target.value)}
-                          data-testid="input-api-key"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="apiSecret">API Secret / Client Secret (optional)</Label>
-                        <Input
-                          id="apiSecret"
-                          type="password"
-                          placeholder="Sandbox API Secret eingeben"
-                          value={newApiSecret}
-                          onChange={(e) => setNewApiSecret(e.target.value)}
-                          data-testid="input-api-secret"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="apiMerchantId">Merchant ID (optional)</Label>
-                        <Input
-                          id="apiMerchantId"
-                          placeholder="Merchant oder Account ID"
-                          value={newApiMerchantId}
-                          onChange={(e) => setNewApiMerchantId(e.target.value)}
-                          data-testid="input-api-merchant-id"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2 p-3 rounded-md bg-muted">
-                        <Badge variant="secondary">Sandbox</Badge>
-                        <span className="text-sm text-muted-foreground">
-                          Alle Verbindungen nutzen die Sandbox-/Test-Umgebung
-                        </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {conn.connected ? (
+                          <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                            <CheckCircle2 className="h-4 w-4" />
+                            <span className="text-sm hidden sm:inline">Verbunden</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <XCircle className="h-4 w-4" />
+                            <span className="text-sm hidden sm:inline">Nicht verbunden</span>
+                          </div>
+                        )}
+                        {!conn.connected && isInternal && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleTestApiConnection(conn.id)}
+                            disabled={updateApiConnectionsMutation.isPending}
+                            data-testid={`button-test-api-${conn.id}`}
+                          >
+                            Testen
+                          </Button>
+                        )}
+                        {isInternal && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveApiConnection(conn.id)}
+                            disabled={updateApiConnectionsMutation.isPending}
+                            data-testid={`button-remove-api-${conn.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setShowAddApi(false)}>
-                        Abbrechen
-                      </Button>
-                      <Button
-                        onClick={handleAddApiConnection}
-                        disabled={!newApiPlatform || !newApiKey || updateApiConnectionsMutation.isPending}
-                        data-testid="button-confirm-add-api"
-                      >
-                        Verbindung hinzufügen
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {apiConnections.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Plattform</TableHead>
-                    <TableHead>API Key</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {apiConnections.map((conn) => {
-                    const platformInfo = SUPPORTED_PLATFORMS.find(p => p.value === conn.platform);
-                    return (
-                      <TableRow key={conn.id} data-testid={`api-row-${conn.id}`}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{conn.label || platformInfo?.label || conn.platform}</p>
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <Badge variant="secondary">Sandbox</Badge>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <code className="text-sm text-muted-foreground">
-                            {conn.apiKey || "****"}
-                          </code>
-                        </TableCell>
-                        <TableCell>
-                          {conn.connected ? (
-                            <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                              <CheckCircle2 className="h-4 w-4" />
-                              <span className="text-sm">Verbunden</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <XCircle className="h-4 w-4" />
-                              <span className="text-sm">Nicht verbunden</span>
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            {!conn.connected && isInternal && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleTestApiConnection(conn.id)}
-                                disabled={updateApiConnectionsMutation.isPending}
-                                data-testid={`button-test-api-${conn.id}`}
-                              >
-                                Testen
-                              </Button>
-                            )}
-                            {isInternal && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleRemoveApiConnection(conn.id)}
-                                disabled={updateApiConnectionsMutation.isPending}
-                                data-testid={`button-remove-api-${conn.id}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                  );
+                })}
+              </div>
             ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <Plug className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>Keine API-Verbindungen konfiguriert</p>
-                <p className="text-sm">Fügen Sie eine Verbindung hinzu, um Daten direkt von Zahlungsplattformen abzurufen</p>
+              <div className="text-center py-6 text-muted-foreground rounded-md border border-dashed">
+                <Plug className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Keine API-Verbindungen konfiguriert</p>
+                <p className="text-xs mt-1">Fügen Sie eine Verbindung hinzu, um Daten direkt von Zahlungsplattformen abzurufen</p>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
         {isInternal && (
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Benutzerberechtigungen
-                  </CardTitle>
-                  <CardDescription>
-                    Verwalten Sie den Zugriff auf dieses Mandat
-                  </CardDescription>
-                </div>
-                <Dialog open={showAddUser} onOpenChange={setShowAddUser}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" data-testid="button-add-user">
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Hinzufügen
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Benutzer hinzufügen</DialogTitle>
-                      <DialogDescription>
-                        Geben Sie die E-Mail-Adresse des Benutzers ein
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="userEmail">E-Mail-Adresse</Label>
-                        <Input
-                          id="userEmail"
-                          type="email"
-                          placeholder="benutzer@example.com"
-                          value={userEmail}
-                          onChange={(e) => setUserEmail(e.target.value)}
-                          data-testid="input-user-email"
-                        />
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowAddUser(false)}
-                      >
-                        Abbrechen
-                      </Button>
-                      <Button
-                        onClick={() => assignUserMutation.mutate()}
-                        disabled={!userEmail || assignUserMutation.isPending}
-                        data-testid="button-confirm-add-user"
-                      >
+          <>
+            <Separator />
+
+            {/* Benutzerberechtigungen */}
+            <section className="space-y-4" data-testid="section-benutzer">
+              <SectionHeader
+                icon={Users}
+                title="Benutzerberechtigungen"
+                description="Verwalten Sie den Zugriff auf dieses Mandat"
+                action={
+                  <Dialog open={showAddUser} onOpenChange={setShowAddUser}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" data-testid="button-add-user">
+                        <UserPlus className="h-4 w-4 mr-2" />
                         Hinzufügen
                       </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {usersLoading ? (
-                <div className="space-y-3">
-                  {[1, 2].map((i) => (
-                    <Skeleton key={i} className="h-16 w-full" />
-                  ))}
-                </div>
-              ) : assignedUsers && assignedUsers.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Benutzer</TableHead>
-                      <TableHead>Rolle</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Benutzer hinzufügen</DialogTitle>
+                        <DialogDescription>
+                          Geben Sie die E-Mail-Adresse des Benutzers ein
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="userEmail">E-Mail-Adresse</Label>
+                          <Input
+                            id="userEmail"
+                            type="email"
+                            placeholder="benutzer@example.com"
+                            value={userEmail}
+                            onChange={(e) => setUserEmail(e.target.value)}
+                            data-testid="input-user-email"
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowAddUser(false)}>
+                          Abbrechen
+                        </Button>
+                        <Button
+                          onClick={() => assignUserMutation.mutate()}
+                          disabled={!userEmail || assignUserMutation.isPending}
+                          data-testid="button-confirm-add-user"
+                        >
+                          Hinzufügen
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                }
+              />
+              <div className="pl-11">
+                {usersLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2].map((i) => (
+                      <Skeleton key={i} className="h-14 w-full" />
+                    ))}
+                  </div>
+                ) : assignedUsers && assignedUsers.length > 0 ? (
+                  <div className="space-y-2">
                     {assignedUsers.map((assignment) => (
-                      <TableRow key={assignment.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8">
-                              <AvatarImage src={assignment.user.image || undefined} />
-                              <AvatarFallback>
-                                {assignment.user.name?.[0] || assignment.user.email?.[0] || "U"}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium">
-                                {assignment.user.name}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                {assignment.user.email}
-                              </p>
-                            </div>
+                      <div
+                        key={assignment.id}
+                        className="flex items-center justify-between gap-3 p-3 rounded-md border"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={assignment.user.image || undefined} />
+                            <AvatarFallback>
+                              {assignment.user.name?.[0] || assignment.user.email?.[0] || "U"}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium text-sm">{assignment.user.name}</p>
+                            <p className="text-xs text-muted-foreground">{assignment.user.email}</p>
                           </div>
-                        </TableCell>
-                        <TableCell>
+                        </div>
+                        <div className="flex items-center gap-2">
                           <Badge variant="secondary">Extern</Badge>
-                        </TableCell>
-                        <TableCell>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -902,20 +698,39 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                        </TableCell>
-                      </TableRow>
+                        </div>
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Keine externen Benutzer</p>
-                  <p className="text-sm">Fügen Sie Benutzer hinzu, um ihnen Zugriff zu gewähren</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground rounded-md border border-dashed">
+                    <Users className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Keine externen Benutzer</p>
+                    <p className="text-xs mt-1">Fügen Sie Benutzer hinzu, um ihnen Zugriff zu gewähren</p>
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* Sticky Save Button */}
+        {isInternal && (
+          <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <div className="max-w-3xl mx-auto px-6 py-3 flex items-center justify-end gap-3">
+              <p className="text-sm text-muted-foreground mr-auto hidden sm:block">
+                Änderungen werden erst nach dem Speichern übernommen
+              </p>
+              <Button
+                onClick={() => saveAllMutation.mutate()}
+                disabled={saveAllMutation.isPending}
+                data-testid="button-save-all"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {saveAllMutation.isPending ? "Wird gespeichert..." : "Alle Änderungen speichern"}
+              </Button>
+            </div>
+          </div>
         )}
       </div>
     </div>
