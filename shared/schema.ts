@@ -145,6 +145,8 @@ export const processes = pgTable("processes", {
   usedMacroIds: jsonb("used_macro_ids").notNull().default([]),
   belegFileSlots: jsonb("beleg_file_slots").notNull().default([]),
   manualAmountFields: jsonb("manual_amount_fields").notNull().default([]),
+  countryColumn: text("country_column"),
+  platformName: text("platform_name"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -172,6 +174,8 @@ export const processExecutions = pgTable("process_executions", {
   transactionCount: integer("transaction_count").default(0),
   totalAmount: text("total_amount"),
   countryBreakdown: jsonb("country_breakdown"),
+  currencyBreakdown: jsonb("currency_breakdown"),
+  platformBreakdown: jsonb("platform_breakdown"),
   executedAt: timestamp("executed_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });

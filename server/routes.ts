@@ -798,6 +798,62 @@ export async function registerRoutes(
         }
       }
 
+      // Extract country, currency, and platform breakdowns from output data
+      let countryBreakdown: Record<string, number> | null = null;
+      let currencyBreakdown: Record<string, number> | null = null;
+      let platformBreakdown: Record<string, number> | null = null;
+
+      if (firstOutput?.content && firstOutput.columns) {
+        try {
+          const csvContent = Buffer.from(firstOutput.content, 'base64').toString('utf-8');
+          const lines = csvContent.split('\n').filter(l => l.trim());
+          if (lines.length > 1) {
+            const headers = lines[0].split(';').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+            const umsatzIdx = headers.findIndex(h => h === 'umsatz');
+            const shIdx = headers.findIndex(h => h === 'sh');
+            const wkzIdx = headers.findIndex(h => h === 'wkz');
+            const countryCol = (processData as any).countryColumn?.toLowerCase()?.trim();
+            const countryIdx = countryCol ? headers.findIndex(h => h === countryCol) : -1;
+
+            if (umsatzIdx !== -1) {
+              const countryMap: Record<string, number> = {};
+              const currencyMap: Record<string, number> = {};
+
+              for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(';').map(c => c.trim().replace(/^"|"$/g, ''));
+                const rawValue = cols[umsatzIdx] || '0';
+                const numValue = parseFloat(rawValue.replace(/\./g, '').replace(',', '.')) || 0;
+                const shValue = (shIdx !== -1 ? cols[shIdx] : '').toUpperCase().trim();
+                const sign = shValue === 'H' ? -1 : 1;
+                const amount = numValue * sign;
+
+                if (wkzIdx !== -1) {
+                  const currency = (cols[wkzIdx] || '').trim().toUpperCase() || 'EUR';
+                  currencyMap[currency] = (currencyMap[currency] || 0) + amount;
+                }
+
+                if (countryIdx !== -1) {
+                  const country = (cols[countryIdx] || '').trim().toUpperCase() || 'UNBEKANNT';
+                  if (country) {
+                    countryMap[country] = (countryMap[country] || 0) + amount;
+                  }
+                }
+              }
+
+              if (Object.keys(countryMap).length > 0) countryBreakdown = countryMap;
+              if (Object.keys(currencyMap).length > 0) currencyBreakdown = currencyMap;
+            }
+
+            const procPlatformName = (processData as any).platformName?.trim();
+            if (procPlatformName && totalAmount) {
+              platformBreakdown = { [procPlatformName]: parseFloat(totalAmount) };
+            }
+          }
+        } catch (breakdownError) {
+          console.warn("Error extracting breakdowns:", breakdownError);
+        }
+      }
+
       // Update execution with completed status and output data
       await storage.updateProcessExecution(execution.id, {
         status: "completed",
@@ -805,6 +861,9 @@ export async function registerRoutes(
         transactionCount,
         outputData: outputDataForStorage,
         totalAmount,
+        countryBreakdown,
+        currencyBreakdown,
+        platformBreakdown,
       });
 
       res.json({

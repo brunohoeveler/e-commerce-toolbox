@@ -109,7 +109,8 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
 
   const needsExecutions = config.showProcessExecutions || config.showProcessTodos || 
                           config.showTransactions || config.showRevenue || config.showPayments ||
-                          config.showTotalRevenue || config.showOpenPayments;
+                          config.showTotalRevenue || config.showOpenPayments ||
+                          config.showRevenueByPlatform || config.showRevenueByCountry || config.showRevenueByCurrency;
 
   const { data: executions } = useQuery<ProcessExecution[]>({
     queryKey: [`/api/process-executions?mandantId=${mandantId}`],
@@ -118,7 +119,7 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
 
   const { data: processes } = useQuery<Process[]>({
     queryKey: [`/api/processes?mandantId=${mandantId}`],
-    enabled: !!mandantId && (config.showProcessTodos || config.showRevenue || config.showPayments || config.showTransactions || config.showTotalRevenue || config.showOpenPayments),
+    enabled: !!mandantId && (config.showProcessTodos || config.showRevenue || config.showPayments || config.showTransactions || config.showTotalRevenue || config.showOpenPayments || config.showRevenueByPlatform || config.showRevenueByCountry || config.showRevenueByCurrency),
   });
 
   const now = new Date();
@@ -143,13 +144,21 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
 
   const metrics = useMemo(() => {
     if (!processes || !filteredExecutions.length) {
-      return { totalRevenue: 0, totalPayments: 0, totalTransactions: 0 };
+      return { 
+        totalRevenue: 0, totalPayments: 0, totalTransactions: 0,
+        countryBreakdown: {} as Record<string, number>,
+        currencyBreakdown: {} as Record<string, number>,
+        platformBreakdown: {} as Record<string, number>,
+      };
     }
 
     const processMap = new Map(processes.map(p => [p.id, p]));
     let totalRevenue = 0;
     let totalPayments = 0;
     let totalTransactions = 0;
+    const countryBreakdown: Record<string, number> = {};
+    const currencyBreakdown: Record<string, number> = {};
+    const platformBreakdown: Record<string, number> = {};
 
     for (const exec of filteredExecutions) {
       const proc = processMap.get(exec.processId);
@@ -162,9 +171,32 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
         totalPayments += amount;
       }
       totalTransactions += exec.transactionCount || 0;
+
+      if (processType === "umsatz") {
+        const execCountry = (exec as any).countryBreakdown as Record<string, number> | null;
+        if (execCountry) {
+          for (const [key, val] of Object.entries(execCountry)) {
+            countryBreakdown[key] = (countryBreakdown[key] || 0) + val;
+          }
+        }
+
+        const execCurrency = (exec as any).currencyBreakdown as Record<string, number> | null;
+        if (execCurrency) {
+          for (const [key, val] of Object.entries(execCurrency)) {
+            currencyBreakdown[key] = (currencyBreakdown[key] || 0) + val;
+          }
+        }
+
+        const execPlatform = (exec as any).platformBreakdown as Record<string, number> | null;
+        if (execPlatform) {
+          for (const [key, val] of Object.entries(execPlatform)) {
+            platformBreakdown[key] = (platformBreakdown[key] || 0) + val;
+          }
+        }
+      }
     }
 
-    return { totalRevenue, totalPayments, totalTransactions };
+    return { totalRevenue, totalPayments, totalTransactions, countryBreakdown, currencyBreakdown, platformBreakdown };
   }, [processes, filteredExecutions]);
 
   const processTodos = useMemo(() => {
@@ -337,9 +369,22 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                   <CreditCard className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-sm text-muted-foreground">
-                    Keine Daten verfügbar
-                  </div>
+                  {Object.keys(metrics.platformBreakdown).length > 0 ? (
+                    <div className="space-y-2">
+                      {Object.entries(metrics.platformBreakdown)
+                        .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
+                        .map(([platform, amount]) => (
+                        <div key={platform} className="flex items-center justify-between gap-2" data-testid={`platform-row-${platform}`}>
+                          <span className="text-sm truncate">{platform}</span>
+                          <span className="text-sm font-medium whitespace-nowrap">{formatCurrency(amount)} EUR</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      Keine Daten verfügbar
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground mt-2">
                     {periodLabel}
                   </p>
@@ -354,9 +399,22 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                   <Globe className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-sm text-muted-foreground">
-                    Keine Daten verfügbar
-                  </div>
+                  {Object.keys(metrics.countryBreakdown).length > 0 ? (
+                    <div className="space-y-2">
+                      {Object.entries(metrics.countryBreakdown)
+                        .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
+                        .map(([country, amount]) => (
+                        <div key={country} className="flex items-center justify-between gap-2" data-testid={`country-row-${country}`}>
+                          <span className="text-sm truncate">{country}</span>
+                          <span className="text-sm font-medium whitespace-nowrap">{formatCurrency(amount)} EUR</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      Keine Daten verfügbar
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground mt-2">
                     {periodLabel}
                   </p>
@@ -371,9 +429,22 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-sm text-muted-foreground">
-                    Keine Daten verfügbar
-                  </div>
+                  {Object.keys(metrics.currencyBreakdown).length > 0 ? (
+                    <div className="space-y-2">
+                      {Object.entries(metrics.currencyBreakdown)
+                        .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
+                        .map(([currency, amount]) => (
+                        <div key={currency} className="flex items-center justify-between gap-2" data-testid={`currency-row-${currency}`}>
+                          <span className="text-sm truncate">{currency}</span>
+                          <span className="text-sm font-medium whitespace-nowrap">{formatCurrency(amount)} {currency}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      Keine Daten verfügbar
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground mt-2">
                     {periodLabel}
                   </p>

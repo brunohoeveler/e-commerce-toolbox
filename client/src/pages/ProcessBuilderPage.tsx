@@ -119,6 +119,8 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
   const [usedMacroIds, setUsedMacroIds] = useState<string[]>([]);
   const [belegFileSlots, setBelegFileSlots] = useState<BelegFileSlot[]>([]);
   const [manualAmountFields, setManualAmountFields] = useState<ManualAmountField[]>([]);
+  const [countryColumn, setCountryColumn] = useState("");
+  const [platformName, setPlatformName] = useState("");
 
   // Fetch available macros
   const { data: macros } = useQuery<Macro[]>({
@@ -150,6 +152,8 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       setUsedMacroIds((existingProcess as any).usedMacroIds || []);
       setBelegFileSlots((existingProcess as any).belegFileSlots as BelegFileSlot[] || []);
       setManualAmountFields((existingProcess as any).manualAmountFields as ManualAmountField[] || []);
+      setCountryColumn((existingProcess as any).countryColumn || "");
+      setPlatformName((existingProcess as any).platformName || "");
     }
   }, [existingProcess]);
 
@@ -168,6 +172,8 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       usedMacroIds: string[];
       belegFileSlots: BelegFileSlot[];
       manualAmountFields: ManualAmountField[];
+      countryColumn: string | null;
+      platformName: string | null;
     }) => {
       if (processId) {
         return apiRequest("PATCH", `/api/processes/${processId}`, data);
@@ -351,6 +357,8 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       usedMacroIds: inputMode === "daten" ? usedMacroIds : [],
       belegFileSlots: inputMode === "beleg" ? belegFileSlots : [],
       manualAmountFields: inputMode === "beleg" ? manualAmountFields : [],
+      countryColumn: countryColumn.trim() || null,
+      platformName: platformName.trim() || null,
     });
   };
 
@@ -521,6 +529,34 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                       <SelectItem value="yearly">Jährlich</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="platformName">Plattform (optional)</Label>
+                  <Input
+                    id="platformName"
+                    value={platformName}
+                    onChange={(e) => setPlatformName(e.target.value)}
+                    placeholder="z.B. PayPal, Stripe, Shopify"
+                    data-testid="input-platform-name"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Name der Plattform für die Dashboard-Auswertung
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="countryColumn">Länderspalte (optional)</Label>
+                  <Input
+                    id="countryColumn"
+                    value={countryColumn}
+                    onChange={(e) => setCountryColumn(e.target.value)}
+                    placeholder="z.B. land, country"
+                    data-testid="input-country-column"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Spaltenname im Output-DataFrame für Länder-Auswertung
+                  </p>
                 </div>
               </div>
             </CardContent>
