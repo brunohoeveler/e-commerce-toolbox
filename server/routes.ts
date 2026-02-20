@@ -80,6 +80,24 @@ async function requireMandantAccess(req: AuthRequest, res: Response, mandantId: 
   return true;
 }
 
+function stripApiSecrets(mandant: any) {
+  if (!mandant) return mandant;
+  const result = { ...mandant };
+  if (Array.isArray(result.apiConnections)) {
+    result.apiConnections = result.apiConnections.map((conn: any) => ({
+      ...conn,
+      apiKey: conn.apiKey ? conn.apiKey.substring(0, 4) + "****" : undefined,
+      apiSecret: conn.apiSecret ? "****" : undefined,
+      accessToken: conn.accessToken ? "****" : undefined,
+    }));
+  }
+  return result;
+}
+
+function stripApiSecretsArray(mandanten: any[]) {
+  return mandanten.map(stripApiSecrets);
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -107,7 +125,7 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const { isInternal } = await getUserContext(userId);
       const mandanten = await storage.getMandantenForUser(userId, isInternal);
-      res.json(mandanten);
+      res.json(stripApiSecretsArray(mandanten));
     } catch (error) {
       console.error("Error fetching mandanten:", error);
       res.status(500).json({ message: "Failed to fetch mandanten" });
@@ -125,7 +143,7 @@ export async function registerRoutes(
       if (!mandant) {
         return res.status(404).json({ message: "Mandant not found" });
       }
-      res.json(mandant);
+      res.json(stripApiSecrets(mandant));
     } catch (error) {
       console.error("Error fetching mandant:", error);
       res.status(500).json({ message: "Failed to fetch mandant" });

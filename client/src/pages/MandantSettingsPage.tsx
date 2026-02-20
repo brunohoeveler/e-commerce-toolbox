@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Building2, Users, UserPlus, Trash2, Save, LayoutDashboard, Info, Plug, Plus, CheckCircle2, XCircle, Eye, EyeOff } from "lucide-react";
+import { Building2, Users, UserPlus, Trash2, Save, LayoutDashboard, Info, Plug, Plus, CheckCircle2, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,7 +75,6 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
   const [newApiKey, setNewApiKey] = useState("");
   const [newApiSecret, setNewApiSecret] = useState("");
   const [newApiMerchantId, setNewApiMerchantId] = useState("");
-  const [visibleSecrets, setVisibleSecrets] = useState<Set<string>>(new Set());
 
   const SUPPORTED_PLATFORMS = [
     { value: "paypal", label: "PayPal" },
@@ -284,20 +283,6 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
     });
   };
 
-  const toggleSecretVisibility = (connectionId: string) => {
-    setVisibleSecrets(prev => {
-      const next = new Set(prev);
-      if (next.has(connectionId)) next.delete(connectionId);
-      else next.add(connectionId);
-      return next;
-    });
-  };
-
-  const maskSecret = (value: string | undefined) => {
-    if (!value) return "";
-    if (value.length <= 8) return "****";
-    return value.substring(0, 4) + "****" + value.substring(value.length - 4);
-  };
 
   if (!mandantId || !mandant) {
     return (
@@ -739,7 +724,6 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                 <TableBody>
                   {apiConnections.map((conn) => {
                     const platformInfo = SUPPORTED_PLATFORMS.find(p => p.value === conn.platform);
-                    const isVisible = visibleSecrets.has(conn.id);
                     return (
                       <TableRow key={conn.id} data-testid={`api-row-${conn.id}`}>
                         <TableCell>
@@ -751,19 +735,9 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1">
-                            <code className="text-sm">
-                              {isVisible ? conn.apiKey : maskSecret(conn.apiKey)}
-                            </code>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => toggleSecretVisibility(conn.id)}
-                              data-testid={`button-toggle-secret-${conn.id}`}
-                            >
-                              {isVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                            </Button>
-                          </div>
+                          <code className="text-sm text-muted-foreground">
+                            {conn.apiKey || "****"}
+                          </code>
                         </TableCell>
                         <TableCell>
                           {conn.connected ? (
