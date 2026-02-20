@@ -276,7 +276,7 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
         </Card>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="columns-1 md:columns-2 lg:columns-3 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
             {config.showRevenue && (
               <Card data-testid="card-revenue">
                 <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
@@ -486,62 +486,62 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                 </CardContent>
               </Card>
             )}
-          </div>
 
-          {config.showProcessTodos && processTodos.length > 0 && (
-            <Card data-testid="card-process-todos">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-                <CardTitle className="text-sm font-medium">Prozess-Aufgaben — {getCurrentPeriodLabel()}</CardTitle>
-                <Badge variant="secondary" className="text-xs" data-testid="badge-todo-progress">
-                  {completedCount}/{totalCount} erledigt
-                </Badge>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {processTodos.map((todo) => (
-                    <div
-                      key={todo.process.id}
-                      className="flex items-center gap-3"
-                      data-testid={`todo-process-${todo.process.id}`}
-                    >
-                      {todo.completed ? (
-                        <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-400 shrink-0" data-testid={`icon-completed-${todo.process.id}`} />
-                      ) : (
-                        <Circle className="h-5 w-5 text-muted-foreground shrink-0" data-testid={`icon-pending-${todo.process.id}`} />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${todo.completed ? "line-through text-muted-foreground" : ""}`}>
-                          {todo.process.name}
-                        </p>
-                        {todo.process.description && (
-                          <p className="text-xs text-muted-foreground truncate">
-                            {todo.process.description}
-                          </p>
+            {config.showProcessTodos && processTodos.length > 0 && (
+              <Card data-testid="card-process-todos">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Prozess-Aufgaben — {getCurrentPeriodLabel()}</CardTitle>
+                  <Badge variant="secondary" className="text-xs" data-testid="badge-todo-progress">
+                    {completedCount}/{totalCount} erledigt
+                  </Badge>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {processTodos.map((todo) => (
+                      <div
+                        key={todo.process.id}
+                        className="flex items-center gap-3"
+                        data-testid={`todo-process-${todo.process.id}`}
+                      >
+                        {todo.completed ? (
+                          <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-400 shrink-0" data-testid={`icon-completed-${todo.process.id}`} />
+                        ) : (
+                          <Circle className="h-5 w-5 text-muted-foreground shrink-0" data-testid={`icon-pending-${todo.process.id}`} />
                         )}
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium truncate ${todo.completed ? "line-through text-muted-foreground" : ""}`}>
+                            {todo.process.name}
+                          </p>
+                          {todo.process.description && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {todo.process.description}
+                            </p>
+                          )}
+                        </div>
+                        <Badge variant={todo.completed ? "secondary" : "outline"} className="shrink-0 text-xs">
+                          {getFrequencyLabel((todo.process as any).executionFrequency || "monthly")}
+                        </Badge>
                       </div>
-                      <Badge variant={todo.completed ? "secondary" : "outline"} className="shrink-0 text-xs">
-                        {getFrequencyLabel((todo.process as any).executionFrequency || "monthly")}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-          {config.showProcessTodos && processTodos.length === 0 && processes && (
-            <Card data-testid="card-process-todos-empty">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-                <CardTitle className="text-sm font-medium">Prozess-Aufgaben</CardTitle>
-                <ListTodo className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-4 text-muted-foreground">
-                  <p className="text-sm">Keine Prozesse für dieses Mandat vorhanden</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+            {config.showProcessTodos && processTodos.length === 0 && processes && (
+              <Card data-testid="card-process-todos-empty">
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+                  <CardTitle className="text-sm font-medium">Prozess-Aufgaben</CardTitle>
+                  <ListTodo className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-4 text-muted-foreground">
+                    <p className="text-sm">Keine Prozesse für dieses Mandat vorhanden</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </>
       )}
     </div>
