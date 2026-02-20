@@ -61,6 +61,20 @@ export function normalizeDashboardConfig(stored: Partial<DashboardConfig> | null
   };
 }
 
+export interface ApiConnection {
+  id: string;
+  platform: string;
+  label: string;
+  sandbox: boolean;
+  apiKey?: string;
+  apiSecret?: string;
+  accessToken?: string;
+  merchantId?: string;
+  baseUrl?: string;
+  connected: boolean;
+  connectedAt?: string;
+}
+
 export const mandanten = pgTable("mandanten", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -69,6 +83,8 @@ export const mandanten = pgTable("mandanten", {
   sachkontenLaenge: integer("sachkonten_laenge").notNull(),
   sachkontenRahmen: integer("sachkonten_rahmen").notNull(),
   dashboardConfig: jsonb("dashboard_config").$type<DashboardConfig>().default(defaultDashboardConfig),
+  ossBeteiligung: boolean("oss_beteiligung").default(false),
+  apiConnections: jsonb("api_connections").$type<ApiConnection[]>().default([]),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
