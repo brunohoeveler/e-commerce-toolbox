@@ -76,7 +76,7 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 
 ### Prozesse
 - id, mandantId, name, description, processType, inputFileCount, inputFileSlots (JSONB), transformationSteps, executionFrequency
-- processType: "umsatz" | "zahlung" (Standard: umsatz) - bestimmt ob der Prozess Umsätze oder Zahlungen verarbeitet
+- processType: "umsatz" | "zahlung" | "gutschein" (Standard: umsatz) - bestimmt ob der Prozess Umsätze, Zahlungen oder Gutscheine (Forderungen) verarbeitet. Gutscheine werden nicht in Umsatz/Zahlungs-Gegenrechnung berücksichtigt.
 - inputFileSlots: Array von benannten Datei-Slots mit { id, name, description, required }
 - executionFrequency: weekly | monthly | quarterly | yearly (Standard: monthly)
 - countryColumn: Optionaler Spaltenname im Output-DataFrame für Länder-Auswertung (z.B. "land", "country")

@@ -90,7 +90,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [processType, setProcessType] = useState<"umsatz" | "zahlung">("umsatz");
+  const [processType, setProcessType] = useState<"umsatz" | "zahlung" | "gutschein">("umsatz");
   const [inputMode, setInputMode] = useState<"daten" | "beleg">("daten");
   const [executionFrequency, setExecutionFrequency] = useState<"weekly" | "monthly" | "quarterly" | "yearly">("monthly");
   const [inputFileSlots, setInputFileSlots] = useState<InputFileSlot[]>([]);
@@ -162,7 +162,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       mandantId: string;
       name: string;
       description: string;
-      processType: "umsatz" | "zahlung";
+      processType: "umsatz" | "zahlung" | "gutschein";
       inputMode: "daten" | "beleg";
       executionFrequency: "weekly" | "monthly" | "quarterly" | "yearly";
       inputFileCount: number;
@@ -480,7 +480,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                   <Label htmlFor="processType">Prozesstyp</Label>
                   <Select
                     value={processType}
-                    onValueChange={(value: "umsatz" | "zahlung") => setProcessType(value)}
+                    onValueChange={(value: "umsatz" | "zahlung" | "gutschein") => setProcessType(value)}
                   >
                     <SelectTrigger id="processType" data-testid="select-process-type">
                       <SelectValue placeholder="Typ wählen" />
@@ -488,6 +488,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
                     <SelectContent>
                       <SelectItem value="umsatz">Umsatz</SelectItem>
                       <SelectItem value="zahlung">Zahlung</SelectItem>
+                      <SelectItem value="gutschein">Gutschein</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -686,7 +687,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Definieren Sie Eingabefelder für {processType === "umsatz" ? "Umsatzbeträge" : "Zahlungsbeträge"}, die bei der Ausführung manuell eingetragen werden.
+                Definieren Sie Eingabefelder für {processType === "umsatz" ? "Umsatzbeträge" : processType === "zahlung" ? "Zahlungsbeträge" : "Gutscheinbeträge"}, die bei der Ausführung manuell eingetragen werden.
               </p>
               {manualAmountFields.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">

@@ -25,7 +25,7 @@ interface ProcessHistoryPageProps {
 
 interface ExecutionWithProcess extends ProcessExecution {
   processName?: string;
-  processType?: "umsatz" | "zahlung";
+  processType?: "umsatz" | "zahlung" | "gutschein";
 }
 
 interface Attachment {
@@ -86,7 +86,7 @@ export function ProcessHistoryPage({ mandantId }: ProcessHistoryPageProps) {
     return {
       ...exec,
       processName: proc?.name || "Unbekannter Prozess",
-      processType: ((proc as any)?.processType as "umsatz" | "zahlung") || "umsatz",
+      processType: ((proc as any)?.processType as "umsatz" | "zahlung" | "gutschein") || "umsatz",
     };
   }).sort((a, b) => {
     const dateA = a.executedAt ? new Date(a.executedAt).getTime() : 0;
@@ -244,7 +244,7 @@ export function ProcessHistoryPage({ mandantId }: ProcessHistoryPageProps) {
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold truncate">{execution.processName}</h3>
                         <Badge variant="outline" className="text-xs" data-testid={`badge-type-${execution.id}`}>
-                          {execution.processType === "zahlung" ? "Zahlung" : "Umsatz"}
+                          {execution.processType === "zahlung" ? "Zahlung" : execution.processType === "gutschein" ? "Gutschein" : "Umsatz"}
                         </Badge>
                       </div>
                       <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
@@ -285,7 +285,7 @@ export function ProcessHistoryPage({ mandantId }: ProcessHistoryPageProps) {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                       <div>
                         <span className="text-muted-foreground">Typ:</span>
-                        <span className="ml-2 font-medium">{execution.processType === "zahlung" ? "Zahlung" : "Umsatz"}</span>
+                        <span className="ml-2 font-medium">{execution.processType === "zahlung" ? "Zahlung" : execution.processType === "gutschein" ? "Gutschein" : "Umsatz"}</span>
                       </div>
                       <div>
                         <span className="text-muted-foreground">Buchungen:</span>

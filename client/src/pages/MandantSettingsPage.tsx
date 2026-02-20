@@ -413,6 +413,7 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
                 { id: "showRevenueByPlatform", key: "showRevenueByPlatform" as const, label: "Umsatz nach Plattform" },
                 { id: "showRevenueByCountry", key: "showRevenueByCountry" as const, label: "Umsatz nach Ländern" },
                 { id: "showRevenueByCurrency", key: "showRevenueByCurrency" as const, label: "Umsatz nach Währungen" },
+                { id: "showVouchers", key: "showVouchers" as const, label: "Gutscheine (aus Gutschein-Prozessen)" },
                 { id: "showProcessExecutions", key: "showProcessExecutions" as const, label: "Ausgeführte Prozesse" },
                 { id: "showProcessTodos", key: "showProcessTodos" as const, label: "Prozess-Aufgaben (To-Do-Liste)" },
               ].map(item => (

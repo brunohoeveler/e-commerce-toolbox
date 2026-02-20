@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { Calendar, TrendingUp, Globe, DollarSign, CreditCard, PlayCircle, CheckCircle2, Circle, ListTodo, FileText, GripVertical, Pencil, Check } from "lucide-react";
+import { Calendar, TrendingUp, Globe, DollarSign, CreditCard, PlayCircle, CheckCircle2, Circle, ListTodo, FileText, GripVertical, Pencil, Check, Ticket } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ const ALL_CARD_IDS = [
   "revenueByPlatform",
   "revenueByCountry",
   "revenueByCurrency",
+  "vouchers",
   "processExecutions",
   "processProgress",
   "processTodos",
@@ -200,7 +201,7 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
 
   const needsExecutions = config.showProcessExecutions || config.showProcessTodos || 
                           config.showTransactions || config.showRevenue || config.showPayments ||
-                          config.showTotalRevenue || config.showOpenPayments ||
+                          config.showTotalRevenue || config.showOpenPayments || config.showVouchers ||
                           config.showRevenueByPlatform || config.showRevenueByCountry || config.showRevenueByCurrency;
 
   const { data: executions } = useQuery<ProcessExecution[]>({
@@ -236,7 +237,7 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
   const metrics = useMemo(() => {
     if (!processes || !filteredExecutions.length) {
       return { 
-        totalRevenue: 0, totalPayments: 0, totalTransactions: 0,
+        totalRevenue: 0, totalPayments: 0, totalVouchers: 0, totalTransactions: 0,
         countryBreakdown: {} as Record<string, number>,
         currencyBreakdown: {} as Record<string, number>,
         platformBreakdown: {} as Record<string, number>,
@@ -246,6 +247,7 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
     const processMap = new Map(processes.map(p => [p.id, p]));
     let totalRevenue = 0;
     let totalPayments = 0;
+    let totalVouchers = 0;
     let totalTransactions = 0;
     const countryBreakdown: Record<string, number> = {};
     const currencyBreakdown: Record<string, number> = {};
@@ -260,6 +262,8 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
         totalRevenue += amount;
       } else if (processType === "zahlung") {
         totalPayments += amount;
+      } else if (processType === "gutschein") {
+        totalVouchers += amount;
       }
       totalTransactions += exec.transactionCount || 0;
 
@@ -287,7 +291,7 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
       }
     }
 
-    return { totalRevenue, totalPayments, totalTransactions, countryBreakdown, currencyBreakdown, platformBreakdown };
+    return { totalRevenue, totalPayments, totalVouchers, totalTransactions, countryBreakdown, currencyBreakdown, platformBreakdown };
   }, [processes, filteredExecutions]);
 
   const processTodos = useMemo(() => {
@@ -324,7 +328,8 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
                        config.showTransactions ||
                        config.showRevenue ||
                        config.showPayments ||
-                       config.showOpenPayments;
+                       config.showOpenPayments ||
+                       config.showVouchers;
 
   const periodLabel = viewMode === "monthly" ? "Diesen Monat" : "Dieses Jahr";
 
@@ -338,6 +343,7 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
     if (config.showRevenueByPlatform) visible.push("revenueByPlatform");
     if (config.showRevenueByCountry) visible.push("revenueByCountry");
     if (config.showRevenueByCurrency) visible.push("revenueByCurrency");
+    if (config.showVouchers) visible.push("vouchers");
     if (config.showProcessExecutions) visible.push("processExecutions");
     if (config.showProcessTodos && totalCount > 0) visible.push("processProgress");
     if (config.showProcessTodos && processTodos.length > 0) visible.push("processTodos");
@@ -554,6 +560,23 @@ export function DashboardPage({ mandantId }: DashboardPageProps) {
               )}
               <p className="text-xs text-muted-foreground mt-2">
                 {periodLabel}
+              </p>
+            </CardContent>
+          </Card>
+        );
+      case "vouchers":
+        return (
+          <Card data-testid="card-vouchers">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Gutscheine</CardTitle>
+              <Ticket className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="text-vouchers-value">
+                {formatCurrency(metrics.totalVouchers)} EUR
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {periodLabel} (Forderungen aus Gutschein-Prozessen)
               </p>
             </CardContent>
           </Card>

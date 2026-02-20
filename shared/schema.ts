@@ -30,6 +30,7 @@ export interface DashboardConfig {
   showRevenue: boolean;
   showPayments: boolean;
   showOpenPayments: boolean;
+  showVouchers: boolean;
   cardOrder?: string[];
 }
 
@@ -44,6 +45,7 @@ export const defaultDashboardConfig: DashboardConfig = {
   showRevenue: true,
   showPayments: true,
   showOpenPayments: true,
+  showVouchers: true,
 };
 
 export function normalizeDashboardConfig(stored: Partial<DashboardConfig> | null | undefined): DashboardConfig {
@@ -59,6 +61,7 @@ export function normalizeDashboardConfig(stored: Partial<DashboardConfig> | null
     showRevenue: !!stored.showRevenue,
     showPayments: !!stored.showPayments,
     showOpenPayments: !!stored.showOpenPayments,
+    showVouchers: stored.showVouchers !== undefined ? !!stored.showVouchers : true,
     cardOrder: Array.isArray(stored.cardOrder) ? stored.cardOrder : undefined,
   };
 }
@@ -117,7 +120,7 @@ export const mandantUserAssignmentsRelations = relations(mandantUserAssignments,
 
 export const processStatusEnum = pgEnum("process_status", ["pending", "completed", "failed"]);
 export const executionFrequencyEnum = pgEnum("execution_frequency", ["weekly", "monthly", "quarterly", "yearly"]);
-export const processTypeEnum = pgEnum("process_type", ["umsatz", "zahlung"]);
+export const processTypeEnum = pgEnum("process_type", ["umsatz", "zahlung", "gutschein"]);
 export const inputModeEnum = pgEnum("input_mode", ["daten", "beleg"]);
 
 export const macros = pgTable("macros", {
