@@ -30,6 +30,7 @@ export interface DashboardConfig {
   showRevenue: boolean;
   showPayments: boolean;
   showOpenPayments: boolean;
+  cardOrder?: string[];
 }
 
 export const defaultDashboardConfig: DashboardConfig = {
@@ -58,6 +59,7 @@ export function normalizeDashboardConfig(stored: Partial<DashboardConfig> | null
     showRevenue: !!stored.showRevenue,
     showPayments: !!stored.showPayments,
     showOpenPayments: !!stored.showOpenPayments,
+    cardOrder: Array.isArray(stored.cardOrder) ? stored.cardOrder : undefined,
   };
 }
 
