@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Building2, Users, UserPlus, Trash2, Save, LayoutDashboard, Info, Plug, Plus, CheckCircle2, XCircle } from "lucide-react";
+import { Building2, Users, UserPlus, Trash2, Save, LayoutDashboard, Info, Plug, Plus, CheckCircle2, XCircle, ExternalLink, Loader2, Unplug, Store } from "lucide-react";
+import { SiStripe, SiPaypal, SiAmazon, SiShopify } from "react-icons/si";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,8 +33,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Mandant, DashboardConfig, ApiConnection } from "@shared/schema";
-import { defaultDashboardConfig, normalizeDashboardConfig } from "@shared/schema";
+import type { Mandant, DashboardConfig, ApiConnection, OAuthProvider } from "@shared/schema";
+import { defaultDashboardConfig, normalizeDashboardConfig, OAUTH_PROVIDERS } from "@shared/schema";
 
 interface AuthUser {
   id: string;
@@ -52,16 +53,12 @@ interface AssignedUser {
   user: AuthUser;
 }
 
-const SUPPORTED_PLATFORMS = [
-  { value: "paypal", label: "PayPal" },
-  { value: "stripe", label: "Stripe" },
-  { value: "klarna", label: "Klarna" },
-  { value: "mollie", label: "Mollie" },
-  { value: "adyen", label: "Adyen" },
-  { value: "shopify", label: "Shopify Payments" },
-  { value: "amazon_pay", label: "Amazon Pay" },
-  { value: "square", label: "Square" },
-];
+const PROVIDER_ICONS: Record<string, React.ElementType> = {
+  stripe: SiStripe,
+  paypal: SiPaypal,
+  amazon: SiAmazon,
+  shopify: SiShopify,
+};
 
 function SectionHeader({ icon: Icon, title, description, action }: {
   icon: React.ElementType;
@@ -102,12 +99,9 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
   const [dashboardConfig, setDashboardConfig] = useState<DashboardConfig>(defaultDashboardConfig);
   const [ossBeteiligung, setOssBeteiligung] = useState(false);
   const [apiConnections, setApiConnections] = useState<ApiConnection[]>([]);
-  const [showAddApi, setShowAddApi] = useState(false);
-  const [newApiPlatform, setNewApiPlatform] = useState("");
-  const [newApiLabel, setNewApiLabel] = useState("");
-  const [newApiKey, setNewApiKey] = useState("");
-  const [newApiSecret, setNewApiSecret] = useState("");
-  const [newApiMerchantId, setNewApiMerchantId] = useState("");
+  const [connectingProvider, setConnectingProvider] = useState<OAuthProvider | null>(null);
+  const [shopifyDomain, setShopifyDomain] = useState("");
+  const [showShopifyDialog, setShowShopifyDialog] = useState(false);
 
   useEffect(() => {
     if (mandant) {
@@ -205,70 +199,90 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
     },
   });
 
-  const updateApiConnectionsMutation = useMutation({
-    mutationFn: async (connections: ApiConnection[]) => {
-      return apiRequest("PATCH", `/api/mandanten/${mandantId}`, { apiConnections: connections });
+  const { data: oauthProviders } = useQuery<Array<{ value: string; label: string; description: string; configured: boolean }>>({
+    queryKey: ["/api/oauth/providers"],
+  });
+
+  const { data: oauthStatus, refetch: refetchOAuthStatus } = useQuery<Array<{ id: string; platform: string; label: string; connected: boolean; connectedAt?: string; providerAccountId?: string; shopDomain?: string }>>({
+    queryKey: ["/api/mandanten", mandantId, "oauth", "status"],
+    queryFn: async () => {
+      const res = await fetch(`/api/mandanten/${mandantId}/oauth/status`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !!mandantId,
+  });
+
+  const handleOAuthConnect = async (provider: OAuthProvider) => {
+    if (provider === "shopify") {
+      setShowShopifyDialog(true);
+      return;
+    }
+    setConnectingProvider(provider);
+    try {
+      const res = await fetch(`/api/mandanten/${mandantId}/oauth/${provider}/start`, { credentials: "include" });
+      const data = await res.json();
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      } else {
+        toast({ title: "Fehler", description: data.message || "OAuth-Flow konnte nicht gestartet werden", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Fehler", description: "Verbindung konnte nicht hergestellt werden", variant: "destructive" });
+    } finally {
+      setConnectingProvider(null);
+    }
+  };
+
+  const handleShopifyConnect = async () => {
+    if (!shopifyDomain) return;
+    setConnectingProvider("shopify");
+    setShowShopifyDialog(false);
+    try {
+      const domain = shopifyDomain.includes(".myshopify.com") ? shopifyDomain : `${shopifyDomain}.myshopify.com`;
+      const res = await fetch(`/api/mandanten/${mandantId}/oauth/shopify/start?shopDomain=${encodeURIComponent(domain)}`, { credentials: "include" });
+      const data = await res.json();
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      } else {
+        toast({ title: "Fehler", description: data.message || "OAuth-Flow konnte nicht gestartet werden", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Fehler", description: "Verbindung konnte nicht hergestellt werden", variant: "destructive" });
+    } finally {
+      setConnectingProvider(null);
+    }
+  };
+
+  const disconnectMutation = useMutation({
+    mutationFn: async (provider: OAuthProvider) => {
+      return apiRequest("POST", `/api/mandanten/${mandantId}/oauth/${provider}/disconnect`);
     },
     onSuccess: () => {
-      toast({
-        title: "Gespeichert",
-        description: "API-Verbindungen wurden aktualisiert.",
-      });
+      toast({ title: "Getrennt", description: "Die Verbindung wurde erfolgreich entfernt." });
       queryClient.invalidateQueries({ queryKey: ["/api/mandanten"] });
+      refetchOAuthStatus();
     },
     onError: () => {
-      toast({
-        title: "Fehler",
-        description: "API-Verbindungen konnten nicht gespeichert werden.",
-        variant: "destructive",
-      });
+      toast({ title: "Fehler", description: "Verbindung konnte nicht getrennt werden", variant: "destructive" });
     },
   });
 
-  const handleAddApiConnection = () => {
-    if (!newApiPlatform || !newApiKey) return;
-    const platformInfo = SUPPORTED_PLATFORMS.find(p => p.value === newApiPlatform);
-    const newConnection: ApiConnection = {
-      id: crypto.randomUUID(),
-      platform: newApiPlatform,
-      label: newApiLabel || platformInfo?.label || newApiPlatform,
-      sandbox: true,
-      apiKey: newApiKey,
-      apiSecret: newApiSecret || undefined,
-      merchantId: newApiMerchantId || undefined,
-      connected: false,
-      connectedAt: undefined,
-    };
-    const updated = [...apiConnections, newConnection];
-    setApiConnections(updated);
-    updateApiConnectionsMutation.mutate(updated);
-    setShowAddApi(false);
-    setNewApiPlatform("");
-    setNewApiLabel("");
-    setNewApiKey("");
-    setNewApiSecret("");
-    setNewApiMerchantId("");
-  };
-
-  const handleRemoveApiConnection = (connectionId: string) => {
-    const updated = apiConnections.filter(c => c.id !== connectionId);
-    setApiConnections(updated);
-    updateApiConnectionsMutation.mutate(updated);
-  };
-
-  const handleTestApiConnection = async (connectionId: string) => {
-    const updated = apiConnections.map(c =>
-      c.id === connectionId
-        ? { ...c, connected: true, connectedAt: new Date().toISOString() }
-        : c
-    );
-    setApiConnections(updated);
-    updateApiConnectionsMutation.mutate(updated);
-    toast({
-      title: "Verbindung getestet",
-      description: "Die Sandbox-Verbindung wurde erfolgreich hergestellt.",
-    });
-  };
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("oauth_success") === "true") {
+      const provider = params.get("provider");
+      toast({ title: "Verbunden", description: `${provider} wurde erfolgreich verbunden.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/mandanten"] });
+      refetchOAuthStatus();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (params.get("oauth_error")) {
+      const error = params.get("oauth_error");
+      toast({ title: "Fehler", description: `OAuth-Fehler: ${error}`, variant: "destructive" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   if (!mandantId || !mandant) {
     return (
@@ -438,175 +452,142 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
 
         <Separator />
 
-        {/* APIs / Schnittstellen */}
+        {/* APIs / Schnittstellen (OAuth 2.0) */}
         <section className="space-y-4" data-testid="section-apis">
           <SectionHeader
             icon={Plug}
-            title="APIs / Schnittstellen"
-            description="Verbinden Sie Zahlungsplattformen per Sandbox-API"
-            action={isInternal ? (
-              <Dialog open={showAddApi} onOpenChange={setShowAddApi}>
-                <DialogTrigger asChild>
-                  <Button size="sm" data-testid="button-add-api">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Verbindung hinzufügen
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>API-Verbindung hinzufügen</DialogTitle>
-                    <DialogDescription>
-                      Wählen Sie eine Plattform und geben Sie die Sandbox-API-Zugangsdaten ein
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label>Plattform</Label>
-                      <Select value={newApiPlatform} onValueChange={setNewApiPlatform}>
-                        <SelectTrigger data-testid="select-api-platform">
-                          <SelectValue placeholder="Plattform auswählen" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SUPPORTED_PLATFORMS.map(p => (
-                            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+            title="API-Schnittstellen"
+            description="Verbinden Sie Zahlungsplattformen per OAuth 2.0, um Transaktionsdaten live abzurufen"
+          />
+          <div className="pl-11 space-y-3">
+            {OAUTH_PROVIDERS.map((provider) => {
+              const ProviderIcon = PROVIDER_ICONS[provider.value] || Plug;
+              const connectedInfo = oauthStatus?.find(s => s.platform === provider.value);
+              const providerConfig = oauthProviders?.find(p => p.value === provider.value);
+              const isConfigured = providerConfig?.configured ?? false;
+              const isConnected = !!connectedInfo?.connected;
+              const isConnecting = connectingProvider === provider.value;
+
+              return (
+                <div
+                  key={provider.value}
+                  className="flex items-center justify-between gap-3 p-4 rounded-lg border"
+                  data-testid={`oauth-provider-${provider.value}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="rounded-md bg-muted p-2.5 shrink-0">
+                      <ProviderIcon className="h-5 w-5" />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="apiLabel">Bezeichnung (optional)</Label>
-                      <Input
-                        id="apiLabel"
-                        placeholder="z.B. PayPal Hauptkonto"
-                        value={newApiLabel}
-                        onChange={(e) => setNewApiLabel(e.target.value)}
-                        data-testid="input-api-label"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="apiKey">API Key / Client ID</Label>
-                      <Input
-                        id="apiKey"
-                        placeholder="Sandbox API Key eingeben"
-                        value={newApiKey}
-                        onChange={(e) => setNewApiKey(e.target.value)}
-                        data-testid="input-api-key"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="apiSecret">API Secret / Client Secret (optional)</Label>
-                      <Input
-                        id="apiSecret"
-                        type="password"
-                        placeholder="Sandbox API Secret eingeben"
-                        value={newApiSecret}
-                        onChange={(e) => setNewApiSecret(e.target.value)}
-                        data-testid="input-api-secret"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="apiMerchantId">Merchant ID (optional)</Label>
-                      <Input
-                        id="apiMerchantId"
-                        placeholder="Merchant oder Account ID"
-                        value={newApiMerchantId}
-                        onChange={(e) => setNewApiMerchantId(e.target.value)}
-                        data-testid="input-api-merchant-id"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2 p-3 rounded-md bg-muted">
-                      <Badge variant="secondary">Sandbox</Badge>
-                      <span className="text-sm text-muted-foreground">
-                        Alle Verbindungen nutzen die Sandbox-/Test-Umgebung
-                      </span>
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm">{provider.label}</p>
+                      <p className="text-xs text-muted-foreground truncate">{provider.description}</p>
+                      {isConnected && connectedInfo?.connectedAt && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Verbunden seit {new Date(connectedInfo.connectedAt).toLocaleDateString("de-DE")}
+                          {connectedInfo.providerAccountId && (
+                            <span className="ml-1">({connectedInfo.providerAccountId})</span>
+                          )}
+                          {connectedInfo.shopDomain && (
+                            <span className="ml-1">({connectedInfo.shopDomain})</span>
+                          )}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setShowAddApi(false)}>
-                      Abbrechen
-                    </Button>
-                    <Button
-                      onClick={handleAddApiConnection}
-                      disabled={!newApiPlatform || !newApiKey || updateApiConnectionsMutation.isPending}
-                      data-testid="button-confirm-add-api"
-                    >
-                      Verbindung hinzufügen
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            ) : undefined}
-          />
-          <div className="pl-11">
-            {apiConnections.length > 0 ? (
-              <div className="space-y-3">
-                {apiConnections.map((conn) => {
-                  const platformInfo = SUPPORTED_PLATFORMS.find(p => p.value === conn.platform);
-                  return (
-                    <div
-                      key={conn.id}
-                      className="flex items-center justify-between gap-3 p-3 rounded-md border"
-                      data-testid={`api-row-${conn.id}`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="min-w-0">
-                          <p className="font-medium text-sm truncate">
-                            {conn.label || platformInfo?.label || conn.platform}
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <Badge variant="secondary">Sandbox</Badge>
-                            <code className="text-xs text-muted-foreground">{conn.apiKey || "****"}</code>
-                          </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isConnected ? (
+                      <>
+                        <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                          <CheckCircle2 className="h-4 w-4" />
+                          <span className="text-sm hidden sm:inline">Verbunden</span>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {conn.connected ? (
-                          <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                            <CheckCircle2 className="h-4 w-4" />
-                            <span className="text-sm hidden sm:inline">Verbunden</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <XCircle className="h-4 w-4" />
-                            <span className="text-sm hidden sm:inline">Nicht verbunden</span>
-                          </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => disconnectMutation.mutate(provider.value)}
+                          disabled={disconnectMutation.isPending}
+                          data-testid={`button-disconnect-${provider.value}`}
+                        >
+                          <Unplug className="h-4 w-4 mr-1" />
+                          Trennen
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        {!isConfigured && (
+                          <Badge variant="secondary" className="text-xs">
+                            Nicht konfiguriert
+                          </Badge>
                         )}
-                        {!conn.connected && isInternal && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleTestApiConnection(conn.id)}
-                            disabled={updateApiConnectionsMutation.isPending}
-                            data-testid={`button-test-api-${conn.id}`}
-                          >
-                            Testen
-                          </Button>
-                        )}
-                        {isInternal && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleRemoveApiConnection(conn.id)}
-                            disabled={updateApiConnectionsMutation.isPending}
-                            data-testid={`button-remove-api-${conn.id}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-6 text-muted-foreground rounded-md border border-dashed">
-                <Plug className="h-6 w-6 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Keine API-Verbindungen konfiguriert</p>
-                <p className="text-xs mt-1">Fügen Sie eine Verbindung hinzu, um Daten direkt von Zahlungsplattformen abzurufen</p>
-              </div>
-            )}
+                        <Button
+                          size="sm"
+                          onClick={() => handleOAuthConnect(provider.value)}
+                          disabled={isConnecting || !isConfigured}
+                          data-testid={`button-connect-${provider.value}`}
+                        >
+                          {isConnecting ? (
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          ) : (
+                            <ExternalLink className="h-4 w-4 mr-1" />
+                          )}
+                          Verbinden
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50 text-xs text-muted-foreground">
+              <Info className="h-4 w-4 shrink-0" />
+              <span>
+                Klicken Sie auf "Verbinden", um sich per OAuth 2.0 mit der jeweiligen Plattform zu autorisieren.
+                Der Mandant wird zur Plattform weitergeleitet und erteilt dort den Zugriff.
+              </span>
+            </div>
           </div>
         </section>
+
+        {/* Shopify Domain Dialog */}
+        <Dialog open={showShopifyDialog} onOpenChange={setShowShopifyDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Shopify-Shop verbinden</DialogTitle>
+              <DialogDescription>
+                Geben Sie die Shop-Domain ein, um die OAuth-Verbindung herzustellen
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="shopifyDomain">Shop-Domain</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="shopifyDomain"
+                    placeholder="mein-shop"
+                    value={shopifyDomain}
+                    onChange={(e) => setShopifyDomain(e.target.value)}
+                    data-testid="input-shopify-domain"
+                  />
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">.myshopify.com</span>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowShopifyDialog(false)}>
+                Abbrechen
+              </Button>
+              <Button
+                onClick={handleShopifyConnect}
+                disabled={!shopifyDomain}
+                data-testid="button-confirm-shopify"
+              >
+                <ExternalLink className="h-4 w-4 mr-1" />
+                Verbinden
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {isInternal && (
           <>

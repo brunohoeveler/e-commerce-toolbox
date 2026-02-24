@@ -48,7 +48,8 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 │   ├── storage.ts         # Datenbank-Operationen
 │   ├── lib/
 │   │   ├── auth.ts        # Better Auth Konfiguration
-│   │   └── auth-middleware.ts # Session-Validierung
+│   │   ├── auth-middleware.ts # Session-Validierung
+│   │   └── oauth-providers.ts # OAuth 2.0 Provider Registry (Stripe, PayPal, Amazon, Shopify)
 │   └── replit_integrations/
 │       └── object_storage/# Dateispeicher
 └── shared/
@@ -81,6 +82,8 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 - executionFrequency: weekly | monthly | quarterly | yearly (Standard: monthly)
 - countryColumn: Optionaler Spaltenname im Output-DataFrame für Länder-Auswertung (z.B. "land", "country")
 - platformName: Optionaler Plattformname für Dashboard-Auswertung (z.B. "PayPal", "Stripe", "Shopify")
+- apiConnectionId: Optionale Referenz auf eine verbundene API-Connection des Mandanten
+- apiDataConfig: JSONB mit API-Datenquellen-Konfiguration { dataType, dateRange, variableName }
 
 ### Prozess-Ausführungen
 - id, processId, mandantId, status, month, quarter, year, inputFiles, outputData, transactionCount
@@ -143,9 +146,40 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 - `POST /api/exports` - Neuen Export erstellen
 - `GET /api/exports/:id/download` - Export herunterladen
 
+### OAuth 2.0 / API-Verbindungen
+- `GET /api/oauth/providers` - Verfügbare OAuth-Provider mit Konfigurationsstatus
+- `GET /api/mandanten/:id/oauth/:provider/start` - OAuth-Flow starten (Redirect zu Provider)
+- `GET /api/oauth/callback/:provider` - OAuth-Callback (Token-Austausch)
+- `DELETE /api/mandanten/:id/oauth/:connectionId/disconnect` - API-Verbindung trennen
+- `GET /api/mandanten/:id/oauth/status` - Status aller API-Verbindungen eines Mandanten
+- `POST /api/mandanten/:id/oauth/:connectionId/fetch-data` - API-Daten abrufen
+
 ### Benutzer
 - `GET /api/users` - Alle Benutzer
 - `PATCH /api/users/:id/role` - Benutzerrolle ändern
+
+## OAuth 2.0 Integration
+
+### Unterstützte Provider
+- **Stripe Connect**: Zahlungen, Payment Intents, Auszahlungen, Rückerstattungen
+- **PayPal**: Transaktionen, Zahlungen
+- **Amazon SP-API**: Bestellungen, Abrechnungen
+- **Shopify**: Bestellungen, Transaktionen (benötigt Shop-Domain)
+
+### Architektur
+- OAuth-Tokens werden ausschließlich serverseitig gespeichert (apiConnections JSONB in mandanten)
+- Automatischer Token-Refresh vor API-Aufrufen
+- State-Parameter für CSRF-Schutz
+- Provider-Registry in `server/lib/oauth-providers.ts`
+- API-Daten werden als CSV konvertiert und durch bestehende Python/Polars-Pipeline verarbeitet
+- Environment Variables: `{PROVIDER}_CLIENT_ID` und `{PROVIDER}_CLIENT_SECRET` pro Provider
+
+### API-Datenfluss
+1. Prozess wird mit apiConnectionId + apiDataConfig konfiguriert
+2. Bei Ausführung: Daten werden automatisch von der API abgerufen
+3. API-Response wird zu CSV konvertiert
+4. CSV wird als Variable `api_data` (Dateipfad) im Python-Code verfügbar
+5. Bestehende Transformationslogik verarbeitet die Daten wie gewohnt
 
 ## Benutzerrollen
 

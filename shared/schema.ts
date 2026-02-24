@@ -66,19 +66,31 @@ export function normalizeDashboardConfig(stored: Partial<DashboardConfig> | null
   };
 }
 
+export type OAuthProvider = "stripe" | "paypal" | "amazon" | "shopify";
+
 export interface ApiConnection {
   id: string;
-  platform: string;
+  platform: OAuthProvider;
   label: string;
   sandbox: boolean;
-  apiKey?: string;
-  apiSecret?: string;
-  accessToken?: string;
-  merchantId?: string;
-  baseUrl?: string;
   connected: boolean;
   connectedAt?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  tokenExpiresAt?: string;
+  scope?: string;
+  merchantId?: string;
+  shopDomain?: string;
+  providerAccountId?: string;
+  providerMetadata?: Record<string, any>;
 }
+
+export const OAUTH_PROVIDERS: { value: OAuthProvider; label: string; description: string }[] = [
+  { value: "stripe", label: "Stripe", description: "Zahlungsabwicklung und Transaktionsdaten" },
+  { value: "paypal", label: "PayPal", description: "PayPal-Transaktionen und Berichte" },
+  { value: "amazon", label: "Amazon", description: "Amazon Seller/SP-API Transaktionsdaten" },
+  { value: "shopify", label: "Shopify", description: "Shopify-Bestellungen und Zahlungen" },
+];
 
 export const mandanten = pgTable("mandanten", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -151,6 +163,12 @@ export const templateFiles = pgTable("template_files", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export interface ApiDataConfig {
+  dataType: "transactions" | "payments" | "orders" | "settlements";
+  dateRangeMode: "period" | "custom";
+  variableName: string;
+}
+
 export const processes = pgTable("processes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   mandantId: varchar("mandant_id").notNull(),
@@ -168,6 +186,8 @@ export const processes = pgTable("processes", {
   manualAmountFields: jsonb("manual_amount_fields").notNull().default([]),
   countryColumn: text("country_column"),
   platformName: text("platform_name"),
+  apiConnectionId: text("api_connection_id"),
+  apiDataConfig: jsonb("api_data_config").$type<ApiDataConfig>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

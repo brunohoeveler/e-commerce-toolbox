@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Save, Plus, Trash2, ArrowLeft, FileCode, Puzzle, Code2 } from "lucide-react";
+import { Save, Plus, Trash2, ArrowLeft, FileCode, Puzzle, Code2, Database } from "lucide-react";
 
 // Python syntax highlighting function using token-based approach
 function highlightPython(code: string): string {
@@ -76,7 +76,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { InputFileSlot, OutputFile, Process, Macro, BelegFileSlot, ManualAmountField } from "@shared/schema";
+import type { InputFileSlot, OutputFile, Process, Macro, BelegFileSlot, ManualAmountField, ApiDataConfig, ApiConnection, Mandant } from "@shared/schema";
+import { OAUTH_PROVIDERS } from "@shared/schema";
 
 interface ProcessBuilderPageProps {
   mandantId: string | null;
@@ -121,6 +122,20 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
   const [manualAmountFields, setManualAmountFields] = useState<ManualAmountField[]>([]);
   const [countryColumn, setCountryColumn] = useState("");
   const [platformName, setPlatformName] = useState("");
+  const [apiConnectionId, setApiConnectionId] = useState<string | null>(null);
+  const [apiDataConfig, setApiDataConfig] = useState<ApiDataConfig | null>(null);
+
+  const { data: mandantData } = useQuery<Mandant>({
+    queryKey: ["/api/mandanten", mandantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/mandanten/${mandantId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !!mandantId,
+  });
+
+  const connectedApis = ((mandantData?.apiConnections || []) as ApiConnection[]).filter(c => c.connected);
 
   // Fetch available macros
   const { data: macros } = useQuery<Macro[]>({
@@ -154,6 +169,8 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       setManualAmountFields((existingProcess as any).manualAmountFields as ManualAmountField[] || []);
       setCountryColumn((existingProcess as any).countryColumn || "");
       setPlatformName((existingProcess as any).platformName || "");
+      setApiConnectionId((existingProcess as any).apiConnectionId || null);
+      setApiDataConfig((existingProcess as any).apiDataConfig || null);
     }
   }, [existingProcess]);
 
@@ -174,6 +191,8 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       manualAmountFields: ManualAmountField[];
       countryColumn: string | null;
       platformName: string | null;
+      apiConnectionId: string | null;
+      apiDataConfig: ApiDataConfig | null;
     }) => {
       if (processId) {
         return apiRequest("PATCH", `/api/processes/${processId}`, data);
@@ -315,10 +334,10 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
     }
 
     if (inputMode === "daten") {
-      if (inputFileSlots.length === 0) {
+      if (inputFileSlots.length === 0 && !apiConnectionId) {
         toast({
           title: "Fehler",
-          description: "Bitte fügen Sie mindestens eine Input-Datei hinzu.",
+          description: "Bitte fügen Sie mindestens eine Input-Datei hinzu oder wählen Sie eine API-Datenquelle.",
           variant: "destructive",
         });
         return;
@@ -359,6 +378,8 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
       manualAmountFields: inputMode === "beleg" ? manualAmountFields : [],
       countryColumn: countryColumn.trim() || null,
       platformName: platformName.trim() || null,
+      apiConnectionId: inputMode === "daten" ? apiConnectionId : null,
+      apiDataConfig: inputMode === "daten" ? apiDataConfig : null,
     });
   };
 
@@ -564,6 +585,115 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
           </Card>
 
           {inputMode === "daten" ? (
+          <>
+          {connectedApis.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                API-Datenquelle (optional)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Optional: Transaktionsdaten direkt von einer verbundenen API abrufen. Die Daten werden als zusätzliche Input-Variable bereitgestellt.
+              </p>
+              <div className="space-y-2">
+                <Label>Verbundene API</Label>
+                <Select
+                  value={apiConnectionId || "none"}
+                  onValueChange={(val) => {
+                    if (val === "none") {
+                      setApiConnectionId(null);
+                      setApiDataConfig(null);
+                    } else {
+                      setApiConnectionId(val);
+                      const conn = connectedApis.find(c => c.id === val);
+                      setApiDataConfig({
+                        dataType: conn?.platform === "stripe" ? "charges" :
+                                  conn?.platform === "paypal" ? "transactions" :
+                                  conn?.platform === "amazon" ? "orders" : "orders",
+                        dateRange: "period",
+                      });
+                    }
+                  }}
+                  data-testid="select-api-connection"
+                >
+                  <SelectTrigger data-testid="select-api-connection-trigger">
+                    <SelectValue placeholder="Keine API-Datenquelle" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Keine API-Datenquelle</SelectItem>
+                    {connectedApis.map((conn) => {
+                      const providerInfo = OAUTH_PROVIDERS.find(p => p.value === conn.platform);
+                      return (
+                        <SelectItem key={conn.id} value={conn.id} data-testid={`select-api-${conn.platform}`}>
+                          {providerInfo?.label || conn.platform} - Verbunden
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              {apiConnectionId && apiDataConfig && (
+                <div className="p-3 bg-muted rounded-md space-y-3">
+                  <div className="space-y-2">
+                    <Label>Datentyp</Label>
+                    <Select
+                      value={apiDataConfig.dataType}
+                      onValueChange={(val) => setApiDataConfig({ ...apiDataConfig, dataType: val })}
+                    >
+                      <SelectTrigger data-testid="select-api-data-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(() => {
+                          const conn = connectedApis.find(c => c.id === apiConnectionId);
+                          if (conn?.platform === "stripe") {
+                            return (
+                              <>
+                                <SelectItem value="charges">Zahlungen (Charges)</SelectItem>
+                                <SelectItem value="payments">Payment Intents</SelectItem>
+                                <SelectItem value="payouts">Auszahlungen (Payouts)</SelectItem>
+                                <SelectItem value="refunds">Rückerstattungen</SelectItem>
+                              </>
+                            );
+                          } else if (conn?.platform === "paypal") {
+                            return (
+                              <>
+                                <SelectItem value="transactions">Transaktionen</SelectItem>
+                                <SelectItem value="payments">Zahlungen</SelectItem>
+                              </>
+                            );
+                          } else if (conn?.platform === "amazon") {
+                            return (
+                              <>
+                                <SelectItem value="orders">Bestellungen</SelectItem>
+                                <SelectItem value="settlements">Abrechnungen</SelectItem>
+                              </>
+                            );
+                          } else if (conn?.platform === "shopify") {
+                            return (
+                              <>
+                                <SelectItem value="orders">Bestellungen</SelectItem>
+                                <SelectItem value="transactions">Transaktionen</SelectItem>
+                              </>
+                            );
+                          }
+                          return <SelectItem value="transactions">Transaktionen</SelectItem>;
+                        })()}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Die API-Daten werden als Variable <code className="bg-background px-1 py-0.5 rounded">api_data</code> im Python-Code verfügbar sein.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          )}
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle>Input-Dateien</CardTitle>
@@ -573,7 +703,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
-              {inputFileSlots.length === 0 ? (
+              {inputFileSlots.length === 0 && !apiConnectionId ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   Keine Input-Dateien definiert. Klicken Sie auf "Hinzufügen".
                 </p>
@@ -620,6 +750,7 @@ export function ProcessBuilderPage({ mandantId, processId }: ProcessBuilderPageP
               )}
             </CardContent>
           </Card>
+          </>
           ) : (
           <>
           <Card>

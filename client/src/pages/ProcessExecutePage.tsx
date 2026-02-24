@@ -153,11 +153,12 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
     if (!process) return;
 
     const inputFileSlots = process.inputFileSlots as InputFileSlot[];
+    const hasApiSource = !!(process as any).apiConnectionId;
     const missingFiles = inputFileSlots.filter(
       (slot) => slot.required && !uploadedFiles.has(slot.id)
     );
 
-    if (missingFiles.length > 0) {
+    if (missingFiles.length > 0 && !hasApiSource) {
       toast({
         title: "Fehlende Dateien",
         description: `Bitte laden Sie alle erforderlichen Dateien hoch: ${missingFiles.map((s) => s.label).join(", ")}`,
@@ -176,6 +177,10 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
       slotMapping[slot.id] = slot.variable;
     });
     formData.append("slotMapping", JSON.stringify(slotMapping));
+
+    if (hasApiSource) {
+      formData.append("useApiData", "true");
+    }
 
     const executionFrequency = (process as any).executionFrequency || "monthly";
     formData.append("year", selectedYear);
@@ -296,7 +301,9 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
   const belegFileSlots = ((process as any).belegFileSlots || []) as BelegFileSlot[];
   const manualAmountFields = ((process as any).manualAmountFields || []) as ManualAmountField[];
   
-  const allRequiredFilesUploaded = inputFileSlots
+  const hasApiSource = !!(process as any).apiConnectionId;
+  
+  const allRequiredFilesUploaded = hasApiSource || inputFileSlots
     .filter((slot) => slot.required)
     .every((slot) => uploadedFiles.has(slot.id));
 
@@ -403,12 +410,23 @@ export function ProcessExecutePage({ mandantId, processId }: ProcessExecutePageP
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {hasApiSource && (
+                <div className="p-4 border border-chart-2/30 bg-chart-2/5 rounded-md space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-chart-2" />
+                    <span className="font-medium text-sm">API-Datenquelle aktiv</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground ml-6">
+                    Transaktionsdaten werden automatisch von der verbundenen API abgerufen (Variable: <code className="bg-background px-1 py-0.5 rounded">api_data</code>).
+                  </p>
+                </div>
+              )}
               {inputFileSlots.map((slot, index) => (
                 <div key={slot.id} className="p-4 border rounded-md space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <Label className="font-medium">
                       {slot.label}
-                      {slot.required && <span className="text-destructive ml-1">*</span>}
+                      {slot.required && !hasApiSource && <span className="text-destructive ml-1">*</span>}
                     </Label>
                     <Badge variant="secondary">{slot.variable}</Badge>
                   </div>

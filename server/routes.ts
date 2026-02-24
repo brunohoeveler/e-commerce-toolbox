@@ -10,8 +10,20 @@ import {
   insertExportRecordSchema,
   insertMacroSchema,
   type InputFileSlot,
-  type OutputFile
+  type OutputFile,
+  type ApiConnection,
+  type OAuthProvider,
+  type ApiDataConfig,
+  OAUTH_PROVIDERS,
 } from "@shared/schema";
+import {
+  getProvider,
+  isProviderConfigured,
+  getConfiguredProviders,
+  createOAuthState,
+  consumeOAuthState,
+  refreshTokenIfNeeded,
+} from "./lib/oauth-providers";
 import { z } from "zod";
 import { callPythonTransform, checkPythonServiceHealth, executePythonCode, TemplateFileData, TimePeriodInfo } from "./python-transform";
 import multer from "multer";
@@ -247,6 +259,251 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to remove user assignment" });
     }
   });
+
+  // ==================== OAuth API Routes ====================
+
+  app.get("/api/oauth/providers", isAuthenticated, async (_req: any, res) => {
+    try {
+      const providers = OAUTH_PROVIDERS.map(p => ({
+        ...p,
+        configured: isProviderConfigured(p.value),
+      }));
+      res.json(providers);
+    } catch (error) {
+      console.error("Error fetching OAuth providers:", error);
+      res.status(500).json({ message: "Failed to fetch providers" });
+    }
+  });
+
+  app.get("/api/mandanten/:id/oauth/:provider/start", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user!.id;
+      const mandantId = req.params.id;
+      const providerName = req.params.provider as OAuthProvider;
+      const shopDomain = req.query.shopDomain as string | undefined;
+
+      if (!(await requireMandantAccess(req, res, mandantId))) return;
+
+      const provider = getProvider(providerName);
+      if (!provider) {
+        return res.status(400).json({ message: `Unbekannter Provider: ${providerName}` });
+      }
+      if (!isProviderConfigured(providerName)) {
+        return res.status(400).json({ message: `Provider ${providerName} ist nicht konfiguriert. Client ID/Secret fehlen.` });
+      }
+
+      const state = createOAuthState({ mandantId, userId, provider: providerName, shopDomain });
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host;
+      const redirectUri = `${protocol}://${host}/api/oauth/callback/${providerName}`;
+
+      const authUrl = provider.buildAuthUrl({ redirectUri, state, shopDomain });
+      res.json({ authUrl });
+    } catch (error) {
+      console.error("Error starting OAuth flow:", error);
+      res.status(500).json({ message: "OAuth-Flow konnte nicht gestartet werden" });
+    }
+  });
+
+  app.get("/api/oauth/callback/:provider", async (req: any, res) => {
+    try {
+      const providerName = req.params.provider as OAuthProvider;
+      const code = req.query.code as string;
+      const stateKey = req.query.state as string;
+      const errorParam = req.query.error as string;
+
+      if (errorParam) {
+        console.error(`OAuth callback error for ${providerName}:`, errorParam);
+        return res.redirect(`/?oauth_error=${encodeURIComponent(errorParam)}&provider=${providerName}`);
+      }
+
+      if (!code || !stateKey) {
+        return res.redirect("/?oauth_error=missing_params");
+      }
+
+      const state = consumeOAuthState(stateKey);
+      if (!state) {
+        return res.redirect("/?oauth_error=invalid_state");
+      }
+
+      const provider = getProvider(providerName);
+      if (!provider) {
+        return res.redirect("/?oauth_error=unknown_provider");
+      }
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host;
+      let redirectUri = `${protocol}://${host}/api/oauth/callback/${providerName}`;
+      if (providerName === "shopify" && state.shopDomain) {
+        redirectUri += `?shopDomain=${state.shopDomain}`;
+      }
+
+      const tokenResult = await provider.exchangeCode(code, redirectUri);
+
+      const mandant = await storage.getMandant(state.mandantId);
+      if (!mandant) {
+        return res.redirect("/?oauth_error=mandant_not_found");
+      }
+
+      const existingConnections = (mandant.apiConnections as ApiConnection[]) || [];
+      const existingIdx = existingConnections.findIndex(c => c.platform === providerName);
+
+      const newConnection: ApiConnection = {
+        id: existingIdx >= 0 ? existingConnections[existingIdx].id : crypto.randomUUID(),
+        platform: providerName,
+        label: OAUTH_PROVIDERS.find(p => p.value === providerName)?.label || providerName,
+        sandbox: false,
+        connected: true,
+        connectedAt: new Date().toISOString(),
+        accessToken: tokenResult.accessToken,
+        refreshToken: tokenResult.refreshToken,
+        tokenExpiresAt: tokenResult.expiresIn
+          ? new Date(Date.now() + tokenResult.expiresIn * 1000).toISOString()
+          : undefined,
+        scope: tokenResult.scope,
+        providerAccountId: tokenResult.providerAccountId,
+        merchantId: tokenResult.merchantId,
+        shopDomain: state.shopDomain || tokenResult.metadata?.shopDomain,
+        providerMetadata: tokenResult.metadata,
+      };
+
+      let updatedConnections: ApiConnection[];
+      if (existingIdx >= 0) {
+        updatedConnections = [...existingConnections];
+        updatedConnections[existingIdx] = newConnection;
+      } else {
+        updatedConnections = [...existingConnections, newConnection];
+      }
+
+      await storage.updateMandant(state.mandantId, { apiConnections: updatedConnections });
+
+      res.redirect(`/?oauth_success=true&provider=${providerName}&mandantId=${state.mandantId}`);
+    } catch (error) {
+      console.error("OAuth callback error:", error);
+      res.redirect(`/?oauth_error=token_exchange_failed&provider=${req.params.provider}`);
+    }
+  });
+
+  app.post("/api/mandanten/:id/oauth/:provider/disconnect", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user!.id;
+      const mandantId = req.params.id;
+      const providerName = req.params.provider as OAuthProvider;
+
+      if (!(await requireMandantAccess(req, res, mandantId))) return;
+
+      const mandant = await storage.getMandant(mandantId);
+      if (!mandant) {
+        return res.status(404).json({ message: "Mandant nicht gefunden" });
+      }
+
+      const connections = (mandant.apiConnections as ApiConnection[]) || [];
+      const updated = connections.filter(c => c.platform !== providerName);
+      await storage.updateMandant(mandantId, { apiConnections: updated });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error disconnecting OAuth:", error);
+      res.status(500).json({ message: "Verbindung konnte nicht getrennt werden" });
+    }
+  });
+
+  app.get("/api/mandanten/:id/oauth/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const mandantId = req.params.id;
+      if (!(await requireMandantAccess(req, res, mandantId))) return;
+
+      const mandant = await storage.getMandant(mandantId);
+      if (!mandant) {
+        return res.status(404).json({ message: "Mandant nicht gefunden" });
+      }
+
+      const connections = (mandant.apiConnections as ApiConnection[]) || [];
+      const status = connections.map(c => ({
+        id: c.id,
+        platform: c.platform,
+        label: c.label,
+        connected: c.connected,
+        connectedAt: c.connectedAt,
+        providerAccountId: c.providerAccountId,
+        shopDomain: c.shopDomain,
+      }));
+
+      res.json(status);
+    } catch (error) {
+      console.error("Error fetching OAuth status:", error);
+      res.status(500).json({ message: "Status konnte nicht abgerufen werden" });
+    }
+  });
+
+  app.post("/api/mandanten/:id/api-fetch", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user!.id;
+      const mandantId = req.params.id;
+      const { connectionId, dataType, startDate, endDate } = req.body;
+
+      if (!(await requireMandantAccess(req, res, mandantId))) return;
+
+      if (!connectionId || !startDate || !endDate) {
+        return res.status(400).json({ message: "connectionId, startDate und endDate sind erforderlich" });
+      }
+
+      const mandant = await storage.getMandant(mandantId);
+      if (!mandant) {
+        return res.status(404).json({ message: "Mandant nicht gefunden" });
+      }
+
+      const connections = (mandant.apiConnections as ApiConnection[]) || [];
+      const connection = connections.find(c => c.id === connectionId);
+      if (!connection || !connection.connected) {
+        return res.status(400).json({ message: "Keine aktive Verbindung gefunden" });
+      }
+
+      if (!connection.accessToken) {
+        return res.status(400).json({ message: "Kein Access-Token vorhanden. Bitte erneut verbinden." });
+      }
+
+      const refreshResult = await refreshTokenIfNeeded(connection);
+      let activeToken = connection.accessToken;
+      if (refreshResult) {
+        activeToken = refreshResult.accessToken;
+        const updatedConnections = connections.map(c =>
+          c.id === connectionId
+            ? {
+                ...c,
+                accessToken: refreshResult.accessToken,
+                refreshToken: refreshResult.refreshToken || c.refreshToken,
+                tokenExpiresAt: refreshResult.expiresIn
+                  ? new Date(Date.now() + refreshResult.expiresIn * 1000).toISOString()
+                  : c.tokenExpiresAt,
+              }
+            : c
+        );
+        await storage.updateMandant(mandantId, { apiConnections: updatedConnections });
+      }
+
+      const provider = getProvider(connection.platform);
+      if (!provider) {
+        return res.status(400).json({ message: `Provider ${connection.platform} nicht unterstützt` });
+      }
+
+      const result = await provider.fetchTransactions(activeToken, {
+        startDate,
+        endDate,
+        dataType: dataType || "transactions",
+        merchantId: connection.merchantId,
+        shopDomain: connection.shopDomain,
+        providerAccountId: connection.providerAccountId,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error fetching API data:", error);
+      res.status(500).json({ message: `API-Daten konnten nicht abgerufen werden: ${error.message}` });
+    }
+  });
+
+  // ==================== End OAuth Routes ====================
 
   app.get("/api/processes", isAuthenticated, async (req: any, res) => {
     try {
@@ -537,10 +794,16 @@ export async function registerRoutes(
         });
       }
 
-      if (!uploadedFiles || uploadedFiles.length === 0) {
+      // Check if this process uses an API data source
+      const apiConnectionId = (processData as any).apiConnectionId as string | null;
+      const apiDataConfig = (processData as any).apiDataConfig as ApiDataConfig | null;
+      const hasApiSource = !!apiConnectionId && !!apiDataConfig;
+      const hasFileUploads = uploadedFiles && uploadedFiles.length > 0;
+
+      if (!hasApiSource && !hasFileUploads) {
         return res.status(400).json({ 
           success: false,
-          error: "Keine Dateien hochgeladen." 
+          error: "Keine Dateien hochgeladen und keine API-Datenquelle konfiguriert." 
         });
       }
 
@@ -556,16 +819,103 @@ export async function registerRoutes(
       // Map uploaded files to their variable names
       const filesForPython: Array<{ variable: string; content: Buffer; filename: string }> = [];
       
-      for (const file of uploadedFiles) {
-        // File fieldname is like "file_<slotId>"
-        const slotId = file.fieldname.replace('file_', '');
-        const variableName = slotMapping[slotId] || `data${filesForPython.length + 1}`;
-        
-        filesForPython.push({
-          variable: variableName,
-          content: file.buffer,
-          filename: file.originalname,
-        });
+      // If process has API data source, fetch data from API and add as CSV
+      if (hasApiSource) {
+        try {
+          const mandant = await storage.getMandant(processData.mandantId);
+          if (!mandant) {
+            return res.status(400).json({ success: false, error: "Mandant nicht gefunden" });
+          }
+          const connections = (mandant.apiConnections as ApiConnection[]) || [];
+          const connection = connections.find(c => c.id === apiConnectionId);
+          if (!connection || !connection.connected || !connection.accessToken) {
+            return res.status(400).json({ success: false, error: "API-Verbindung nicht aktiv. Bitte erneut verbinden." });
+          }
+
+          const refreshResult = await refreshTokenIfNeeded(connection);
+          let activeToken = connection.accessToken;
+          if (refreshResult) {
+            activeToken = refreshResult.accessToken;
+            const updatedConnections = connections.map(c =>
+              c.id === apiConnectionId
+                ? { ...c, accessToken: refreshResult.accessToken, refreshToken: refreshResult.refreshToken || c.refreshToken, tokenExpiresAt: refreshResult.expiresIn ? new Date(Date.now() + refreshResult.expiresIn * 1000).toISOString() : c.tokenExpiresAt }
+                : c
+            );
+            await storage.updateMandant(processData.mandantId, { apiConnections: updatedConnections });
+          }
+
+          const provider = getProvider(connection.platform);
+          if (!provider) {
+            return res.status(400).json({ success: false, error: `Provider ${connection.platform} nicht unterstützt` });
+          }
+
+          // Calculate date range from execution period
+          const freq = processData.executionFrequency || "monthly";
+          let startDate: string, endDate: string;
+          if (freq === "monthly" && month) {
+            startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+            const lastDay = new Date(year, month, 0).getDate();
+            endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+          } else if (freq === "quarterly" && quarter) {
+            const qStartMonth = (quarter - 1) * 3 + 1;
+            const qEndMonth = quarter * 3;
+            startDate = `${year}-${String(qStartMonth).padStart(2, "0")}-01`;
+            const lastDay = new Date(year, qEndMonth, 0).getDate();
+            endDate = `${year}-${String(qEndMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+          } else {
+            startDate = `${year}-01-01`;
+            endDate = `${year}-12-31`;
+          }
+
+          const apiResult = await provider.fetchTransactions(activeToken, {
+            startDate,
+            endDate,
+            dataType: apiDataConfig!.dataType || "transactions",
+            merchantId: connection.merchantId,
+            shopDomain: connection.shopDomain,
+            providerAccountId: connection.providerAccountId,
+          });
+
+          // Convert API result to CSV buffer
+          if (apiResult.data.length > 0) {
+            const headers = apiResult.columns.join(";");
+            const rows = apiResult.data.map(row => apiResult.columns.map(col => {
+              const val = row[col];
+              if (val === null || val === undefined) return "";
+              const str = String(val);
+              return str.includes(";") || str.includes('"') || str.includes("\n") ? `"${str.replace(/"/g, '""')}"` : str;
+            }).join(";"));
+            const csvContent = [headers, ...rows].join("\n");
+            const csvBuffer = Buffer.from(csvContent, "utf-8");
+
+            filesForPython.push({
+              variable: apiDataConfig!.variableName || "api_data",
+              content: csvBuffer,
+              filename: `${connection.platform}_${apiDataConfig!.dataType}_${startDate}_${endDate}.csv`,
+            });
+
+            console.log(`Fetched ${apiResult.data.length} records from ${connection.platform} API`);
+          } else {
+            console.log(`No data returned from ${connection.platform} API for period ${startDate} to ${endDate}`);
+          }
+        } catch (apiError: any) {
+          console.error("Error fetching API data:", apiError);
+          return res.status(500).json({ success: false, error: `API-Datenabruf fehlgeschlagen: ${apiError.message}` });
+        }
+      }
+
+      // Add uploaded files
+      if (hasFileUploads) {
+        for (const file of uploadedFiles) {
+          const slotId = file.fieldname.replace('file_', '');
+          const variableName = slotMapping[slotId] || `data${filesForPython.length + 1}`;
+          
+          filesForPython.push({
+            variable: variableName,
+            content: file.buffer,
+            filename: file.originalname,
+          });
+        }
       }
 
       // Load pattern files only from macros explicitly referenced in the process
