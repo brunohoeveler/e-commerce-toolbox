@@ -211,6 +211,7 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
       return res.json();
     },
     enabled: !!mandantId,
+    refetchInterval: 5000,
   });
 
   const handleOAuthConnect = async (provider: OAuthProvider) => {
@@ -223,7 +224,7 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
       const res = await fetch(`/api/mandanten/${mandantId}/oauth/${provider}/start`, { credentials: "include" });
       const data = await res.json();
       if (data.authUrl) {
-        window.location.href = data.authUrl;
+        window.open(data.authUrl, "_blank", "noopener,noreferrer");
       } else {
         toast({ title: "Fehler", description: data.message || "OAuth-Flow konnte nicht gestartet werden", variant: "destructive" });
       }
@@ -243,7 +244,7 @@ export function MandantSettingsPage({ mandantId, mandant }: MandantSettingsPageP
       const res = await fetch(`/api/mandanten/${mandantId}/oauth/shopify/start?shopDomain=${encodeURIComponent(domain)}`, { credentials: "include" });
       const data = await res.json();
       if (data.authUrl) {
-        window.location.href = data.authUrl;
+        window.open(data.authUrl, "_blank", "noopener,noreferrer");
       } else {
         toast({ title: "Fehler", description: data.message || "OAuth-Flow konnte nicht gestartet werden", variant: "destructive" });
       }

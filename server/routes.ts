@@ -306,6 +306,24 @@ export async function registerRoutes(
   });
 
   app.get("/api/oauth/callback/:provider", async (req: any, res) => {
+    const sendOAuthResult = (success: boolean, message: string) => {
+      res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>OAuth ${success ? "Erfolgreich" : "Fehler"}</title>
+        <style>body{font-family:Inter,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;color:#1e293b;}
+        .card{background:white;border-radius:12px;padding:40px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);text-align:center;max-width:400px;}
+        .icon{font-size:48px;margin-bottom:16px;}
+        h2{margin:0 0 8px;}
+        p{color:#64748b;margin:0 0 24px;}
+        button{background:#2563eb;color:white;border:none;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:14px;}
+        button:hover{background:#1d4ed8;}
+        .error .icon{color:#ef4444;} .success .icon{color:#22c55e;}</style></head>
+        <body><div class="card ${success ? "success" : "error"}">
+        <div class="icon">${success ? "✓" : "✕"}</div>
+        <h2>${success ? "Verbindung erfolgreich!" : "Verbindungsfehler"}</h2>
+        <p>${message}</p>
+        <button onclick="window.close()">Fenster schließen</button>
+        </div></body></html>`);
+    };
+
     try {
       const providerName = req.params.provider as OAuthProvider;
       const code = req.query.code as string;
@@ -314,21 +332,21 @@ export async function registerRoutes(
 
       if (errorParam) {
         console.error(`OAuth callback error for ${providerName}:`, errorParam);
-        return res.redirect(`/?oauth_error=${encodeURIComponent(errorParam)}&provider=${providerName}`);
+        return sendOAuthResult(false, `Fehler von ${providerName}: ${errorParam}`);
       }
 
       if (!code || !stateKey) {
-        return res.redirect("/?oauth_error=missing_params");
+        return sendOAuthResult(false, "Fehlende Parameter in der Antwort.");
       }
 
       const state = consumeOAuthState(stateKey);
       if (!state) {
-        return res.redirect("/?oauth_error=invalid_state");
+        return sendOAuthResult(false, "Ungültiger oder abgelaufener OAuth-Status.");
       }
 
       const provider = getProvider(providerName);
       if (!provider) {
-        return res.redirect("/?oauth_error=unknown_provider");
+        return sendOAuthResult(false, "Unbekannter Provider.");
       }
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -342,7 +360,7 @@ export async function registerRoutes(
 
       const mandant = await storage.getMandant(state.mandantId);
       if (!mandant) {
-        return res.redirect("/?oauth_error=mandant_not_found");
+        return sendOAuthResult(false, "Mandant nicht gefunden.");
       }
 
       const existingConnections = (mandant.apiConnections as ApiConnection[]) || [];
@@ -377,10 +395,11 @@ export async function registerRoutes(
 
       await storage.updateMandant(state.mandantId, { apiConnections: updatedConnections });
 
-      res.redirect(`/?oauth_success=true&provider=${providerName}&mandantId=${state.mandantId}`);
+      const providerLabel = OAUTH_PROVIDERS.find(p => p.value === providerName)?.label || providerName;
+      sendOAuthResult(true, `${providerLabel} wurde erfolgreich verbunden. Sie können dieses Fenster jetzt schließen.`);
     } catch (error) {
       console.error("OAuth callback error:", error);
-      res.redirect(`/?oauth_error=token_exchange_failed&provider=${req.params.provider}`);
+      sendOAuthResult(false, "Token-Austausch fehlgeschlagen. Bitte versuchen Sie es erneut.");
     }
   });
 
