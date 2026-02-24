@@ -208,10 +208,25 @@ const stripeProvider: OAuthProviderConfig = {
   },
 };
 
+function isPayPalSandbox(): boolean {
+  return env("PAYPAL_SANDBOX") === "true" ||
+    env("PAYPAL_MODE") === "sandbox" ||
+    env("PAYPAL_CLIENT_ID").startsWith("A") === false ||
+    env("NODE_ENV") === "development";
+}
+
+function paypalBaseUrl(): string {
+  return isPayPalSandbox() ? "https://www.sandbox.paypal.com" : "https://www.paypal.com";
+}
+
+function paypalApiUrl(): string {
+  return isPayPalSandbox() ? "https://api-m.sandbox.paypal.com" : "https://api-m.paypal.com";
+}
+
 const paypalProvider: OAuthProviderConfig = {
   provider: "paypal",
-  authorizationUrl: "https://www.paypal.com/signin/authorize",
-  tokenUrl: "https://api-m.paypal.com/v1/oauth2/token",
+  get authorizationUrl() { return `${paypalBaseUrl()}/signin/authorize`; },
+  get tokenUrl() { return `${paypalApiUrl()}/v1/oauth2/token`; },
   scopes: ["openid", "https://uri.paypal.com/services/reporting/search/read"],
   getClientId: () => env("PAYPAL_CLIENT_ID"),
   getClientSecret: () => env("PAYPAL_CLIENT_SECRET"),
@@ -229,8 +244,9 @@ const paypalProvider: OAuthProviderConfig = {
   },
 
   async exchangeCode(code, redirectUri) {
+    const tokenUrl = `${paypalApiUrl()}/v1/oauth2/token`;
     const auth = Buffer.from(`${paypalProvider.getClientId()}:${paypalProvider.getClientSecret()}`).toString("base64");
-    const data = await httpPost(paypalProvider.tokenUrl, {
+    const data = await httpPost(tokenUrl, {
       grant_type: "authorization_code",
       code,
       redirect_uri: redirectUri,
@@ -247,8 +263,9 @@ const paypalProvider: OAuthProviderConfig = {
   },
 
   async refreshAccessToken(refreshToken) {
+    const tokenUrl = `${paypalApiUrl()}/v1/oauth2/token`;
     const auth = Buffer.from(`${paypalProvider.getClientId()}:${paypalProvider.getClientSecret()}`).toString("base64");
-    const data = await httpPost(paypalProvider.tokenUrl, {
+    const data = await httpPost(tokenUrl, {
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     }, {
@@ -263,6 +280,7 @@ const paypalProvider: OAuthProviderConfig = {
   },
 
   async fetchTransactions(accessToken, params) {
+    const apiBase = paypalApiUrl();
     const allTransactions: any[] = [];
     let page = 1;
     let totalPages = 1;
@@ -275,7 +293,7 @@ const paypalProvider: OAuthProviderConfig = {
         page_size: "100",
         page: String(page),
       });
-      const url = `https://api-m.paypal.com/v1/reporting/transactions?${queryParams}`;
+      const url = `${apiBase}/v1/reporting/transactions?${queryParams}`;
       const result = await httpGet(url, {
         "Authorization": `Bearer ${accessToken}`,
       });
