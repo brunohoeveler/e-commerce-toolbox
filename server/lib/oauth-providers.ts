@@ -117,7 +117,7 @@ const stripeProvider: OAuthProviderConfig = {
   provider: "stripe",
   authorizationUrl: "https://connect.stripe.com/oauth/authorize",
   tokenUrl: "https://connect.stripe.com/oauth/token",
-  scopes: ["read_only"],
+  scopes: ["read_write"],
   getClientId: () => env("STRIPE_CLIENT_ID"),
   getClientSecret: () => env("STRIPE_SECRET_KEY"),
 
