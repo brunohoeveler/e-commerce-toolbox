@@ -916,6 +916,13 @@ export async function registerRoutes(
             console.log(`Fetched ${apiResult.data.length} records from ${connection.platform} API`);
           } else {
             console.log(`No data returned from ${connection.platform} API for period ${startDate} to ${endDate}`);
+            const emptyHeaders = apiResult.columns.join(";");
+            const emptyCsvBuffer = Buffer.from(emptyHeaders + "\n", "utf-8");
+            filesForPython.push({
+              variable: apiDataConfig!.variableName || "api_data",
+              content: emptyCsvBuffer,
+              filename: `${connection.platform}_${apiDataConfig!.dataType}_${startDate}_${endDate}.csv`,
+            });
           }
         } catch (apiError: any) {
           console.error("Error fetching API data:", apiError);
