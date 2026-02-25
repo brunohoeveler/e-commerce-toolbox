@@ -117,7 +117,7 @@ const stripeProvider: OAuthProviderConfig = {
   provider: "stripe",
   authorizationUrl: "https://connect.stripe.com/oauth/authorize",
   tokenUrl: "https://connect.stripe.com/oauth/token",
-  scopes: ["read_write"],
+  scopes: ["read_only"],
   getClientId: () => env("STRIPE_CLIENT_ID"),
   getClientSecret: () => env("STRIPE_SECRET_KEY"),
 
@@ -162,6 +162,7 @@ const stripeProvider: OAuthProviderConfig = {
   async fetchTransactions(accessToken, params) {
     const startTimestamp = Math.floor(new Date(params.startDate).getTime() / 1000);
     const endTimestamp = Math.floor(new Date(params.endDate).getTime() / 1000);
+    const stripeAccountId = params.providerAccountId;
 
     let allCharges: any[] = [];
     let hasMore = true;
@@ -179,9 +180,14 @@ const stripeProvider: OAuthProviderConfig = {
         ? `https://api.stripe.com/v1/payment_intents?${queryParams}`
         : `https://api.stripe.com/v1/charges?${queryParams}`;
 
-      const result = await httpGet(url, {
-        "Authorization": `Bearer ${accessToken}`,
-      });
+      const headers: Record<string, string> = {
+        "Authorization": `Bearer ${stripeProvider.getClientSecret()}`,
+      };
+      if (stripeAccountId) {
+        headers["Stripe-Account"] = stripeAccountId;
+      }
+
+      const result = await httpGet(url, headers);
 
       const items = result.data || [];
       allCharges.push(...items);

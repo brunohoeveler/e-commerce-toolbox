@@ -1,0 +1,232 @@
+# Stripe OAuth 2.0 – Integration für „Mandanteninformationen"
+
+> Diese Dokumentation beschreibt die Implementierung der Stripe Connect OAuth 2.0 Schnittstelle,
+> die auf der Subpage **„Mandanteninformationen"** eingebunden wird, um Transaktionsdaten von
+> Drittnutzern (Mandanten) zu lesen und zu verarbeiten.
+
+---
+
+## Inhaltsverzeichnis
+
+1. [Voraussetzungen](#1-voraussetzungen)
+2. [Projektstruktur](#2-projektstruktur)
+3. [Umgebungsvariablen](#3-umgebungsvariablen)
+4. [Stripe Connect einrichten](#4-stripe-connect-einrichten)
+5. [OAuth 2.0 Flow](#5-oauth-20-flow)
+6. [Transaktionsdaten abrufen](#6-transaktionsdaten-abrufen)
+7. [Frontend – Mandanteninformationen](#7-frontend--mandanteninformationen)
+8. [Sicherheitshinweise](#8-sicherheitshinweise)
+9. [Testen](#9-testen)
+
+---
+
+## 1. Voraussetzungen
+
+- [ ] Stripe-Konto mit aktiviertem **Connect**
+- [ ] Replit-Projekt mit Node.js (Express) oder Python (Flask)
+- [ ] Datenbank zur Speicherung von `stripe_user_id` und `access_token` (z. B. Replit DB)
+- [ ] Öffentliche Replit-URL (z. B. `https://dein-projekt.repl.co`)
+
+---
+
+## 2. Projektstruktur
+
+```
+/
+├── index.js               # Hauptserver (Express)
+├── routes/
+│   ├── auth.js            # OAuth Callback & Token-Austausch
+│   └── mandanten.js       # Transaktionsdaten-Route
+├── public/
+│   └── mandanteninformationen.html   # Subpage mit Stripe-Schaltfläche
+├── .env                   # Lokale Umgebungsvariablen (NICHT committen)
+├── STRIPE_INTEGRATION.md  # Diese Datei
+└── package.json
+```
+
+---
+
+## 3. Umgebungsvariablen
+
+Trage folgende Werte in die **Replit Secrets** ein (🔒 Schloss-Icon in der Sidebar):
+
+| Secret Key             | Beschreibung                              |
+|------------------------|-------------------------------------------|
+| `STRIPE_SECRET_KEY`    | `sk_live_...` (oder `sk_test_...`)        |
+| `STRIPE_CLIENT_ID`     | `ca_XXXXXX` (aus Stripe Connect Settings) |
+| `STRIPE_REDIRECT_URI`  | `https://dein-projekt.repl.co/callback`   |
+| `SESSION_SECRET`       | Beliebiger zufälliger String (CSRF-Schutz)|
+
+> ⚠️ **Niemals** Secret Keys direkt im Code oder in öffentlichen Dateien speichern.
+
+---
+
+## 4. Stripe Connect einrichten
+
+1. Gehe zu [dashboard.stripe.com → Settings → Connect](https://dashboard.stripe.com/settings/connect)
+2. Aktiviere **OAuth für Standard Accounts**
+3. Trage die Redirect URI ein: `https://dein-projekt.repl.co/callback`
+4. Wähle den Scope: `read_only` (nur Lesezugriff auf Transaktionsdaten)
+5. Notiere **Client ID** und **Secret Key**
+
+---
+
+## 5. OAuth 2.0 Flow
+
+### Schritt 1 – Autorisierungslink (Mandant klickt die Schaltfläche)
+
+```javascript
+// routes/auth.js
+const crypto = require('crypto');
+
+app.get('/stripe/connect', (req, res) => {
+  const state = crypto.randomBytes(16).toString('hex');
+  req.session.oauthState = state; // CSRF-Schutz
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: process.env.STRIPE_CLIENT_ID,
+    scope: 'read_only',
+    redirect_uri: process.env.STRIPE_REDIRECT_URI,
+    state,
+  });
+
+  res.redirect(`https://connect.stripe.com/oauth/authorize?${params}`);
+});
+```
+
+### Schritt 2 – Callback & Token-Austausch
+
+```javascript
+app.get('/callback', async (req, res) => {
+  const { code, state } = req.query;
+
+  // CSRF-State validieren
+  if (state !== req.session.oauthState) {
+    return res.status(403).send('Ungültiger State-Parameter.');
+  }
+
+  try {
+    const response = await fetch('https://connect.stripe.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        client_secret: process.env.STRIPE_SECRET_KEY,
+      }),
+    });
+
+    const data = await response.json();
+
+    // Mandanten-ID und Token sicher speichern
+    const mandant = {
+      stripeUserId: data.stripe_user_id,
+      accessToken: data.access_token,  // ggf. verschlüsseln
+      tokenType: data.token_type,
+    };
+
+    // In Replit DB oder eigene DB speichern
+    await db.set(`mandant_${mandant.stripeUserId}`, JSON.stringify(mandant));
+
+    res.redirect('/mandanteninformationen?connected=true');
+  } catch (err) {
+    console.error('OAuth Fehler:', err);
+    res.redirect('/mandanteninformationen?error=true');
+  }
+});
+```
+
+---
+
+## 6. Transaktionsdaten abrufen
+
+```javascript
+// routes/mandanten.js
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+app.get('/api/transaktionen', async (req, res) => {
+  const { stripeUserId } = req.query;
+
+  try {
+    const mandant = JSON.parse(await db.get(`mandant_${stripeUserId}`));
+
+    const transaktionen = await stripe.charges.list(
+      { limit: 50 },
+      { stripeAccount: mandant.stripeUserId } // Im Namen des Mandanten
+    );
+
+    res.json(transaktionen.data);
+  } catch (err) {
+    console.error('Fehler beim Abruf:', err);
+    res.status(500).json({ error: 'Transaktionsdaten konnten nicht geladen werden.' });
+  }
+});
+```
+
+---
+
+## 7. Frontend – Mandanteninformationen
+
+Verknüpfe die bereits vorhandene Schaltfläche auf der Subpage mit der OAuth-Route:
+
+```html
+<!-- In mandanteninformationen.html -->
+
+<!-- Bestehende Schaltfläche → href oder onclick anpassen: -->
+<a href="/stripe/connect" class="btn-stripe">
+  Mit Stripe verbinden
+</a>
+
+<!-- Statusmeldung nach Redirect -->
+<script>
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('connected') === 'true') {
+    document.getElementById('status').textContent =
+      '✅ Stripe-Konto erfolgreich verbunden.';
+  }
+  if (params.get('error') === 'true') {
+    document.getElementById('status').textContent =
+      '❌ Verbindung fehlgeschlagen. Bitte erneut versuchen.';
+  }
+</script>
+<p id="status"></p>
+```
+
+---
+
+## 8. Sicherheitshinweise
+
+- ✅ **State-Parameter** bei jedem OAuth-Request neu generieren und serverseitig prüfen
+- ✅ Access Tokens **verschlüsselt** speichern (z. B. mit `crypto.createCipheriv`)
+- ✅ Webhook-Endpoint für `account.application.deauthorized` einrichten, um Token-Widerrufe zu verarbeiten
+- ✅ HTTPS ist in Replit standardmäßig aktiv – sicherstellen, dass keine HTTP-Weiterleitungen stattfinden
+- ✅ Nur **`read_only`** Scope verwenden, solange kein Schreibzugriff benötigt wird
+- ✅ Testmodus (`sk_test_...`) vollständig durchlaufen, bevor Live-Keys eingesetzt werden
+
+---
+
+## 9. Testen
+
+```bash
+# 1. Replit-Server starten
+node index.js
+
+# 2. Testmodus-Keys in Replit Secrets eintragen
+
+# 3. Stripe Test-Account erstellen (im Stripe Dashboard unter "Connect → Test")
+
+# 4. Flow testen:
+#    → /mandanteninformationen aufrufen
+#    → Schaltfläche klicken
+#    → Stripe-Autorisierung mit Test-Account durchführen
+#    → Redirect auf /mandanteninformationen?connected=true prüfen
+#    → /api/transaktionen?stripeUserId=acct_XXXX aufrufen
+```
+
+### Nützliche Links
+
+- [Stripe Connect Docs](https://stripe.com/docs/connect)
+- [Stripe OAuth Referenz](https://stripe.com/docs/connect/oauth-reference)
+- [Stripe Connect Testing](https://stripe.com/docs/connect/testing)
+- [Replit Secrets Dokumentation](https://docs.replit.com/programming-ide/storing-sensitive-information-environment-variables)
