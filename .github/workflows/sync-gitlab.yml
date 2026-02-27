@@ -1,0 +1,33 @@
+name: Mirror to GitLab
+
+on:
+  push:
+    branches:
+      - main  # Alle Branches spiegeln, die du brauchst
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # gesamte Historie
+
+      - name: Set up Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Add GitLab remote
+        run: |
+          git remote add gitlab https://oauth2:${{secrets.GITLAB_TOKEN}}@gitlab.portal-ecovis-kso.com/replit/e-commerce-toolbox.git
+
+      - name: Push branches
+        run: |
+          git push gitlab -f --all   # alle Branches
+
+      - name: Push tags
+        run: |
+          git push gitlab --tags  # alle Tags
