@@ -2,9 +2,9 @@ name: e-commerce-toolbox
 
 services:
   web:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    image: registry.portal-ecovis-kso.com/replit/e-commerce-toolbox:latest
+    pull_policy: always
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -12,7 +12,7 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
     ports:
-      - "3000:5000"
+      - "${PORT:-3000}:5000"
 
   postgres:
     image: postgres:18
@@ -26,8 +26,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
     volumes:
       - ./volumes/db:/var/lib/postgresql
 
