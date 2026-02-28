@@ -2,7 +2,7 @@ name: e-commerce-toolbox
 
 services:
   web:
-    image: registry.portal-ecovis-kso.com/replit/e-commerce-toolbox:latest
+    image: registry.portal-ecovis-kso.com/replit/e-commerce-toolbox/e-commerce-toolbox:latest
     pull_policy: always
     restart: unless-stopped
     depends_on:
