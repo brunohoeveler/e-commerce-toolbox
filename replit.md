@@ -13,7 +13,7 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 - **Transformation Service**: Python FastAPI mit Polars (läuft auf Port 5001)
 - **Datenbank**: PostgreSQL mit Drizzle ORM
 - **Authentifizierung**: Better Auth (Email/Password)
-- **Dateispeicher**: Replit Object Storage
+- **Dateispeicher**: Replit Object Storage / S3-kompatibler Storage (konfigurierbar)
 
 ## Projektstruktur
 
