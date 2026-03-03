@@ -22,6 +22,7 @@ services:
       S3_BUCKET_NAME: ${S3_BUCKET_NAME}
       S3_REGION: ${S3_REGION}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE}
+      S3_PATH_PREFIX: ${S3_PATH_PREFIX}
 
       # Payment Provider
       AMAZON_SP_APP_ID: ${AMAZON_SP_APP_ID}
