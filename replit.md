@@ -13,7 +13,7 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 - **Transformation Service**: Python FastAPI mit Polars (läuft auf Port 5001)
 - **Datenbank**: PostgreSQL mit Drizzle ORM
 - **Authentifizierung**: Better Auth (Email/Password)
-- **Dateispeicher**: Replit Object Storage / S3-kompatibler Storage (konfigurierbar)
+- **Dateispeicher**: Replit Object Storage / S3-kompatibler Storage (über `server/lib/file-storage.ts` abstrahiert)
 
 ## Projektstruktur
 
@@ -201,6 +201,28 @@ Die Ecovis Mandanten Plattform ist eine Enterprise-Webanwendung für Steuerberat
 - Text entfernen
 - Dateien matchen
 - Zeilen filtern
+
+## Dateispeicher (File Storage)
+
+Alle Datei-Operationen laufen über `server/lib/file-storage.ts`. Der Service erkennt automatisch ob S3 oder Replit Object Storage verwendet wird.
+
+### Replit Object Storage (Standard)
+- Verwendet `DEFAULT_OBJECT_STORAGE_BUCKET_ID` und `PRIVATE_OBJECT_DIR`
+- Keine weitere Konfiguration nötig
+
+### S3-kompatibler Storage (optional)
+- `S3_ENDPOINT` - S3-Endpunkt URL
+- `S3_ACCESS_KEY` - Zugangsschlüssel
+- `S3_SECRET_KEY` - Geheimschlüssel
+- `S3_BUCKET_NAME` - Bucket-Name
+- `S3_REGION` - Region (Standard: `auto`)
+- `S3_FORCE_PATH_STYLE` - Path-Style erzwingen (Standard: `true`)
+- `S3_PATH_PREFIX` - Optionaler Pfad-Prefix für alle Dateien (z.B. `e-commerce-toolbox`)
+
+### Pfad-Konventionen
+- `fileStorage.buildPath("executions", executionId, filename)` - Beleg-/Datei-Uploads
+- `fileStorage.buildPath("macros", macroId, filename)` - Macro-Pattern-Dateien
+- `fileStorage.buildPath("vorlagen", name)` - Vorlagedateien
 
 ## Entwicklung
 

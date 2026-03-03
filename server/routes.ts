@@ -2,7 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { isAuthenticated, AuthRequest } from "./lib/auth-middleware";
-import { registerObjectStorageRoutes, ObjectStorageService, objectStorageClient } from "./replit_integrations/object_storage";
+import { registerObjectStorageRoutes, ObjectStorageService } from "./replit_integrations/object_storage";
+import { fileStorage } from "./lib/file-storage";
 import { 
   insertMandantSchema, 
   insertProcessSchema, 
@@ -741,20 +742,15 @@ export async function registerRoutes(
             const slotLabel = slot?.label || `Beleg ${slotId}`;
             
             try {
-              const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
-              if (bucketId) {
-                const storagePath = `executions/${execution.id}/${file.originalname}`;
-                const bucket = objectStorageClient.bucket(bucketId);
-                const fileObj = bucket.file(storagePath);
-                await fileObj.save(file.buffer);
-                
-                attachments.push({
-                  slotId,
-                  slotLabel,
-                  fileName: file.originalname,
-                  storagePath: `/${bucketId}/${storagePath}`,
-                });
-              }
+              const storagePath = fileStorage.buildPath("executions", execution.id, file.originalname);
+              await fileStorage.saveFile(storagePath, file.buffer);
+              
+              attachments.push({
+                slotId,
+                slotLabel,
+                fileName: file.originalname,
+                storagePath,
+              });
             } catch (uploadError) {
               console.error("Error uploading beleg file:", uploadError);
             }
@@ -961,28 +957,13 @@ export async function registerRoutes(
             const patternFiles = (macro.patternFiles as any[] || []);
             for (const pf of patternFiles) {
               try {
-                // Extract bucket name and object name from storage path
-                const storagePath = pf.storagePath;
-                const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
-                if (pathMatch) {
-                  const bucketName = pathMatch[1];
-                  const objectName = pathMatch[2];
-                  
-                  // Download file from object storage
-                  const bucket = objectStorageClient.bucket(bucketName);
-                  const file = bucket.file(objectName);
-                  const [content] = await file.download();
-                  
-                  filesForPython.push({
-                    variable: pf.variable,
-                    content: content,
-                    filename: pf.originalFilename || `pattern_${pf.id}`,
-                  });
-                  console.log(`Loaded pattern file from macro "${macro.name}": ${pf.variable} (${pf.originalFilename})`);
-                } else {
-                  patternFileErrors.push(`Ungültiger Speicherpfad für Variable "${pf.variable}"`);
-                  console.warn(`Invalid storage path for pattern file ${pf.variable}: ${storagePath}`);
-                }
+                const content = await fileStorage.readFile(pf.storagePath);
+                filesForPython.push({
+                  variable: pf.variable,
+                  content: content,
+                  filename: pf.originalFilename || `pattern_${pf.id}`,
+                });
+                console.log(`Loaded pattern file from macro "${macro.name}": ${pf.variable} (${pf.originalFilename})`);
               } catch (patternError) {
                 patternFileErrors.push(`Fehler beim Laden von "${pf.variable}"`);
                 console.error(`Error loading pattern file ${pf.variable}:`, patternError);
@@ -1008,26 +989,16 @@ export async function registerRoutes(
         const allTemplateFiles = await storage.getTemplateFiles();
         for (const tpl of allTemplateFiles) {
           try {
-            const storagePath = tpl.storagePath;
-            const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
-            if (pathMatch) {
-              const bucketName = pathMatch[1];
-              const objectName = pathMatch[2];
+            const content = await fileStorage.readFile(tpl.storagePath);
               
-              const bucket = objectStorageClient.bucket(bucketName);
-              const file = bucket.file(objectName);
-              const [content] = await file.download();
+            const ext = tpl.originalFilename ? tpl.originalFilename.substring(tpl.originalFilename.lastIndexOf('.')) : '';
+            const filenameForPython = tpl.name + ext;
               
-              // Use name with extension from originalFilename for proper file matching
-              const ext = tpl.originalFilename ? tpl.originalFilename.substring(tpl.originalFilename.lastIndexOf('.')) : '';
-              const filenameForPython = tpl.name + ext;
-              
-              templateFilesForPython.push({
-                name: filenameForPython,
-                content_base64: content.toString('base64'),
-              });
-              console.log(`Loaded template file: ${filenameForPython}`);
-            }
+            templateFilesForPython.push({
+              name: filenameForPython,
+              content_base64: content.toString('base64'),
+            });
+            console.log(`Loaded template file: ${filenameForPython}`);
           } catch (tplError) {
             console.warn(`Failed to load template file ${tpl.name}:`, tplError);
           }
@@ -1058,21 +1029,15 @@ export async function registerRoutes(
         const slotLabel = slot?.label || `File ${slotId}`;
         
         try {
-          const storagePath = `/.private/executions/${execution.id}/${file.originalname}`;
-          const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
+          const storagePath = fileStorage.buildPath("executions", execution.id, file.originalname);
+          await fileStorage.saveFile(storagePath, file.buffer);
           
-          if (bucketId) {
-            const bucket = objectStorageClient.bucket(bucketId);
-            const fileObj = bucket.file(storagePath.replace(/^\/[^\/]+\//, ''));
-            await fileObj.save(file.buffer);
-            
-            attachments.push({
-              slotId,
-              slotLabel,
-              fileName: file.originalname,
-              storagePath: `/${bucketId}${storagePath.replace(/^\/[^\/]+/, '')}`,
-            });
-          }
+          attachments.push({
+            slotId,
+            slotLabel,
+            fileName: file.originalname,
+            storagePath,
+          });
         } catch (uploadError) {
           console.error("Error uploading file to storage:", uploadError);
         }
@@ -1349,7 +1314,7 @@ export async function registerRoutes(
       const attachments = (execution.attachments as { storagePath: string }[]) || [];
       for (const attachment of attachments) {
         try {
-          await objectStorageClient.deleteFile(attachment.storagePath);
+          await fileStorage.deleteFile(attachment.storagePath);
         } catch (deleteError) {
           console.error("Error deleting attachment from storage:", deleteError);
         }
@@ -1381,14 +1346,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Attachment not found" });
       }
       
-      const storagePath = attachment.storagePath;
-      const pathParts = storagePath.replace(/^\//, '').split('/');
-      const bucketName = pathParts[0];
-      const objectName = pathParts.slice(1).join('/');
-      
-      const bucket = objectStorageClient.bucket(bucketName);
-      const file = bucket.file(objectName);
-      const [fileData] = await file.download();
+      const fileData = await fileStorage.readFile(attachment.storagePath);
       
       res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
       
@@ -1453,14 +1411,7 @@ export async function registerRoutes(
         let patternBuffer: Buffer | null = null;
         if (patternTemplate) {
           try {
-            const storagePath = patternTemplate.storagePath;
-            const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
-            if (pathMatch) {
-              const bucket = objectStorageClient.bucket(pathMatch[1]);
-              const file = bucket.file(pathMatch[2]);
-              const [content] = await file.download();
-              patternBuffer = content;
-            }
+            patternBuffer = await fileStorage.readFile(patternTemplate.storagePath);
           } catch (err) {
             console.warn("Failed to load pattern_datev template:", err);
           }
@@ -1767,27 +1718,15 @@ export async function registerRoutes(
       const variable = req.body.variable || `pattern_${Date.now()}`;
       const patternName = req.body.name || file.originalname;
 
-      // Store the file in object storage
-      const envPrivateDir = globalThis.process.env.PRIVATE_OBJECT_DIR || '';
-      const bucketMatch = envPrivateDir.match(/^\/([^\/]+)\//);
-      const bucketName = bucketMatch ? bucketMatch[1] : '';
-
-      if (!bucketName) {
-        return res.status(500).json({ message: "Object storage not configured" });
-      }
-
       const fileId = `pattern_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const objectName = `${envPrivateDir.replace(/^\/[^\/]+\//, '')}/macros/${macro.id}/${fileId}_${file.originalname}`;
-      
-      const bucket = objectStorageClient.bucket(bucketName);
-      const storageFile = bucket.file(objectName);
-      await storageFile.save(file.buffer);
+      const storagePath = fileStorage.buildPath("macros", macro.id, `${fileId}_${file.originalname}`);
+      await fileStorage.saveFile(storagePath, file.buffer);
 
       const patternFile = {
         id: fileId,
         name: patternName,
         variable,
-        storagePath: `/${bucketName}/${objectName}`,
+        storagePath,
         originalFilename: file.originalname,
       };
 
@@ -1820,16 +1759,8 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Pattern file not found" });
       }
 
-      // Delete from object storage
       try {
-        const storagePath = fileToDelete.storagePath;
-        const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
-        if (pathMatch) {
-          const [, bucketName, objectName] = pathMatch;
-          const bucket = objectStorageClient.bucket(bucketName);
-          const file = bucket.file(objectName);
-          await file.delete();
-        }
+        await fileStorage.deleteFile(fileToDelete.storagePath);
       } catch (deleteError) {
         console.error("Error deleting file from storage:", deleteError);
       }
@@ -1912,26 +1843,13 @@ export async function registerRoutes(
         return res.status(400).json({ message: "A template file with this name already exists" });
       }
 
-      // Store the file in object storage under vorlagen/
-      const envPrivateDir = globalThis.process.env.PRIVATE_OBJECT_DIR || '';
-      const bucketMatch = envPrivateDir.match(/^\/([^\/]+)\//);
-      const bucketName = bucketMatch ? bucketMatch[1] : '';
-
-      if (!bucketName) {
-        return res.status(500).json({ message: "Object storage not configured" });
-      }
-
-      const fileId = `template_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const objectName = `${envPrivateDir.replace(/^\/[^\/]+\//, '')}/vorlagen/${name}`;
-      
-      const bucket = objectStorageClient.bucket(bucketName);
-      const storageFile = bucket.file(objectName);
-      await storageFile.save(file.buffer);
+      const storagePath = fileStorage.buildPath("vorlagen", name);
+      await fileStorage.saveFile(storagePath, file.buffer);
 
       const templateFile = await storage.createTemplateFile({
         name,
         originalFilename: file.originalname,
-        storagePath: `/${bucketName}/${objectName}`,
+        storagePath,
         description: req.body.description || '',
       });
 
@@ -1965,16 +1883,8 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Template file not found" });
       }
 
-      // Delete from object storage
       try {
-        const storagePath = file.storagePath;
-        const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
-        if (pathMatch) {
-          const [, bucketName, objectName] = pathMatch;
-          const bucket = objectStorageClient.bucket(bucketName);
-          const storageFile = bucket.file(objectName);
-          await storageFile.delete();
-        }
+        await fileStorage.deleteFile(file.storagePath);
       } catch (deleteError) {
         console.error("Error deleting file from storage:", deleteError);
       }
@@ -1994,16 +1904,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Template file not found" });
       }
 
-      const storagePath = file.storagePath;
-      const pathMatch = storagePath.match(/^\/([^\/]+)\/(.+)$/);
-      if (!pathMatch) {
-        return res.status(500).json({ message: "Invalid storage path" });
-      }
-
-      const [, bucketName, objectName] = pathMatch;
-      const bucket = objectStorageClient.bucket(bucketName);
-      const storageFile = bucket.file(objectName);
-      const [content] = await storageFile.download();
+      const content = await fileStorage.readFile(file.storagePath);
 
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Disposition', `attachment; filename="${file.originalFilename}"`);
